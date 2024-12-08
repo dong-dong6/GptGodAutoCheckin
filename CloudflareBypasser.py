@@ -1,13 +1,14 @@
 import time
 from DrissionPage import ChromiumPage
 
+
 class CloudflareBypasser:
     def __init__(self, driver: ChromiumPage, max_retries=-1, log=True):
         self.driver = driver
         self.max_retries = max_retries
         self.log = log
 
-    def search_recursively_shadow_root_with_iframe(self,ele):
+    def search_recursively_shadow_root_with_iframe(self, ele):
         if ele.shadow_root:
             if ele.shadow_root.child().tag == "iframe":
                 return ele.shadow_root.child()
@@ -18,7 +19,7 @@ class CloudflareBypasser:
                     return result
         return None
 
-    def search_recursively_shadow_root_with_cf_input(self,ele):
+    def search_recursively_shadow_root_with_cf_input(self, ele):
         if ele.shadow_root:
             if ele.shadow_root.ele("tag:input"):
                 return ele.shadow_root.ele("tag:input")
@@ -28,7 +29,7 @@ class CloudflareBypasser:
                 if result:
                     return result
         return None
-    
+
     def locate_cf_button(self):
         button = None
         eles = self.driver.eles("tag:input")
@@ -37,7 +38,7 @@ class CloudflareBypasser:
                 if "turnstile" in ele.attrs["name"] and ele.attrs["type"] == "hidden":
                     button = ele.parent().shadow_root.child()("tag:body").shadow_root("tag:input")
                     break
-            
+
         if button:
             return button
         else:
@@ -68,15 +69,18 @@ class CloudflareBypasser:
             self.log_message(f"Error clicking verification button: {e}")
 
     def is_bypassed(self):
+        temp =  self.driver.ele("text=今天已签到")
         try:
-            title = self.driver.title.lower()
-            return "just a moment" not in title
+            temp.value
+            return True
         except Exception as e:
-            self.log_message(f"Error checking page title: {e}")
             return False
-
+        # if temp is None:
+        #     return False
+        # else:
+        #     return True
     def bypass(self):
-        
+
         try_count = 0
 
         while not self.is_bypassed():
@@ -94,3 +98,6 @@ class CloudflareBypasser:
             self.log_message("Bypass successful.")
         else:
             self.log_message("Bypass failed.")
+
+    def bypassgai(self):
+        self.click_verification_button()

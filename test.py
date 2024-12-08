@@ -1,6 +1,7 @@
 import time
 import logging
 import os
+import yaml
 from CloudflareBypasser import CloudflareBypasser
 from DrissionPage import ChromiumPage, ChromiumOptions
 
@@ -14,37 +15,29 @@ logging.basicConfig(
     ]
 )
 
+
 def get_chromium_options(browser_path: str, arguments: list) -> ChromiumOptions:
-    """
-    Configures and returns Chromium options.
-    
-    :param browser_path: Path to the Chromium browser executable.
-    :param arguments: List of arguments for the Chromium browser.
-    :return: Configured ChromiumOptions instance.
-    """
     options = ChromiumOptions()
-    options.set_argument('--auto-open-devtools-for-tabs', 'true') # we don't need this anymore
+    options.set_argument('--auto-open-devtools-for-tabs', 'true')  # we don't need this anymore
     options.set_paths(browser_path=browser_path)
     for argument in arguments:
         options.set_argument(argument)
     return options
 
 def main():
-    # Chromium Browser Path
     isHeadless = os.getenv('HEADLESS', 'false').lower() == 'true'
-    
+
     if isHeadless:
         from pyvirtualdisplay import Display
 
         display = Display(visible=0, size=(1920, 1080))
         display.start()
 
-    browser_path = os.getenv('CHROME_PATH', "/usr/bin/google-chrome")
-    
-    # Windows Example
-    # browser_path = os.getenv('CHROME_PATH', r"C:/Program Files/Google/Chrome/Application/chrome.exe")
+    # Read accounts from account.yml
+    with open('account.yml', 'r') as f:
+        accounts = yaml.safe_load(f)
 
-    # Arguments to make the browser better for automation and less detectable.
+    browser_path = os.getenv('CHROME_PATH', "/usr/bin/google-chrome")
     arguments = [
         "-no-first-run",
         "-force-color-profile=srgb",
@@ -63,33 +56,46 @@ def main():
 
     options = get_chromium_options(browser_path, arguments)
 
-    # Initialize the browser
-    driver = ChromiumPage(addr_or_opts=options)
-    try:
-        logging.info('Navigating to the demo page.')
-        driver.get('https://nopecha.com/demo/cloudflare')
+    for account in accounts['account']:
+        email = account['mail']
+        password = account['password']
+        logging.info(f"Processing account: {email}")
 
-        # Where the bypass starts
-        logging.info('Starting Cloudflare bypass.')
-        cf_bypasser = CloudflareBypasser(driver)
+        driver = None
+        try:
+            driver = ChromiumPage(addr_or_opts=options)
+            driver.get('https://gptgod.online/#/login')
+            ele = driver.ele("#email")
+            ele.input(email)
+            driver.ele("#password").input(password)
+            driver.ele(
+                'tag:button@@class=ant-btn css-1jr6e2p ant-btn-primary ant-btn-color-primary ant-btn-variant-solid ant-btn-lg').click()
+            time.sleep(5)
+            print("等待首页完全加载结束")
+            driver.get('https://gptgod.online/#/token')
+            driver.ele(
+                'tag:button@@class=ant-btn css-apn68 ant-btn-default ant-btn-color-default ant-btn-variant-outlined').check()
+            time.sleep(5)
+            cf_bypasser = CloudflareBypasser(driver)
+            cf_bypasser.bypass()
 
-        # If you are solving an in-page captcha (like the one here: https://seleniumbase.io/apps/turnstile), use cf_bypasser.click_verification_button() directly instead of cf_bypasser.bypass().
-        # It will automatically locate the button and click it. Do your own check if needed.
+            logging.info("Enjoy the content!")
+            logging.info(f"Title of the page: {driver.title}")
 
-        cf_bypasser.bypass()
+            # Sleep for a while to let the user see the result if needed
+            time.sleep(5)
+        except Exception as e:
+            logging.error(f"An error occurred with account {email}: {str(e)}")
+        finally:
+            if driver is not None:
+                logging.info('Closing the browser.')
+                driver.quit()
+            else:
+                logging.info('Driver was not instantiated.')
+        # Optional sleep between accounts
+        time.sleep(2)
 
-        logging.info("Enjoy the content!")
-        logging.info("Title of the page: %s", driver.title)
-
-        # Sleep for a while to let the user see the result if needed
-        time.sleep(5)
-    except Exception as e:
-        logging.error("An error occurred: %s", str(e))
-    finally:
-        logging.info('Closing the browser.')
-        driver.quit()
-        if isHeadless:
-            display.stop()
-
+    if isHeadless:
+        display.stop()
 if __name__ == '__main__':
     main()
