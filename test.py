@@ -1,6 +1,8 @@
 import time
 import logging
 import os
+
+import schedule
 import yaml
 from CloudflareBypasser import CloudflareBypasser
 from DrissionPage import ChromiumPage, ChromiumOptions
@@ -97,5 +99,12 @@ def main():
 
     if isHeadless:
         display.stop()
-if __name__ == '__main__':
+def job():
     main()
+
+schedule.every().day.at("09:00").do(job)
+
+if __name__ == '__main__':
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
