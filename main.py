@@ -20,7 +20,7 @@ logging.basicConfig(
 
 def get_chromium_options(browser_path: str, arguments: list) -> ChromiumOptions:
     options = ChromiumOptions()
-    options.set_argument('--auto-open-devtools-for-tabs', 'true')  # we don't need this anymore
+    # options.set_argument('--auto-open-devtools-for-tabs', 'true')  # we don't need this anymore
     options.set_paths(browser_path=browser_path)
     for argument in arguments:
         options.set_argument(argument)
@@ -55,6 +55,7 @@ def main():
         "-deny-permission-prompts",
         "-disable-gpu",
         "-accept-lang=en-US",
+        "--disable-dev-tools"
     ]
 
     options = get_chromium_options(browser_path, arguments)
@@ -67,7 +68,8 @@ def main():
         driver = None
         try:
             driver = ChromiumPage(addr_or_opts=options)
-            driver.get('https://gptgod.online/#/login')
+            driver.set.window.full()
+            driver.get('https://gptgod.work/#/login')
             time.sleep(10)  # 等待登录页面加载
 
             # 登录
@@ -90,7 +92,7 @@ def main():
                 logging.info("可能已经是明亮模式或未找到切换按钮/May already be in Light Mode or button not found")
 
             print("等待首页完全加载结束/Waiting for homepage to load completely")
-            driver.get('https://gptgod.online/#/token')
+            driver.get('https://gptgod.work/#/token')
             time.sleep(10)  # 等待token页面加载
 
             # 尝试点击签到按钮（处理中英文两种情况）
@@ -111,7 +113,7 @@ def main():
             logging.info(f"页面标题/Page title: {driver.title}")
 
             # 等待一段时间以便查看结果
-            time.sleep(5)
+            time.sleep(10)
         except Exception as e:
             logging.error(f"处理账号 {email} 时发生错误/Error occurred with account {email}: {str(e)}")
         finally:
@@ -132,6 +134,4 @@ def job():
 schedule.every().day.at("09:00").do(job)
 
 if __name__ == '__main__':
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+    main()
