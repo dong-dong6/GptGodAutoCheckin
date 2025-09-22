@@ -1,0 +1,24 @@
+# SMTP邮件配置（可选）
+smtp:
+  enabled: false  # 是否启用邮件通知
+  server: smtp.gmail.com  # SMTP服务器地址
+  port: 587  # SMTP端口
+  sender_email: your_email@gmail.com  # 发件人邮箱
+  sender_password: your_app_password  # 发件人邮箱密码或应用专用密码
+  receiver_emails:  # 收件人邮箱列表
+    - receiver1@example.com
+    - receiver2@example.com
+
+# 常见SMTP服务器配置:
+# Gmail: smtp.gmail.com, port 587 (需要应用专用密码)
+# Outlook: smtp-mail.outlook.com, port 587
+# QQ邮箱: smtp.qq.com, port 587 (需要授权码)
+# 163邮箱: smtp.163.com, port 25 或 465(SSL)
+
+# GPT-GOD账号配置
+account:
+  - mail: your_email1@example.com  # GPT-GOD登录邮箱
+    password: your_password1        # GPT-GOD登录密码
+  - mail: your_email2@example.com
+    password: your_password2
+  # 可以继续添加更多账号...
