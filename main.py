@@ -8,13 +8,14 @@ from datetime import datetime
 
 import schedule
 import yaml
+
+import fetch_points_history
 from CloudflareBypasser import CloudflareBypasser
 from DrissionPage import ChromiumPage, ChromiumOptions
 from checkin_logger import CheckinLogger
 from checkin_logger_db import CheckinLoggerDB
 from data_manager import DataManager
 from points_history_manager import PointsHistoryManager
-from user_info_listener import capture_user_info_during_checkin, setup_user_info_listener
 from config_manager import ConfigManager
 
 # Configure logging
@@ -26,6 +27,14 @@ logging.basicConfig(
         logging.FileHandler('cloudflare_bypass.log', mode='w', encoding='utf-8')
     ]
 )
+
+def get_chromium_options(browser_path, arguments):
+    """创建并配置ChromiumOptions"""
+    options = ChromiumOptions()
+    options.set_paths(browser_path=browser_path)
+    for argument in arguments:
+        options.set_argument(argument)
+    return options
 
 
 def send_email_notification(subject, body, config):
@@ -83,12 +92,6 @@ def send_email_notification(subject, body, config):
         logging.error(f"发送邮件失败: {str(e)}")
         return False
 
-def get_chromium_options(browser_path: str, arguments: list) -> ChromiumOptions:
-    options = ChromiumOptions()
-    options.set_paths(browser_path=browser_path)
-    for argument in arguments:
-        options.set_argument(argument)
-    return options
 
 
 
@@ -633,17 +636,6 @@ def main(trigger_type='manual', trigger_by=None):
     # 添加积分快照
     data_manager.add_points_snapshot()
 
-    # 所有账号签到完成后，批量获取历史积分记录
-    logging.info("=" * 50)
-    logging.info("开始批量获取所有账号的历史积分记录...")
-    try:
-        from fetch_points_history import fetch_all_accounts_history
-        fetch_all_accounts_history()
-        logging.info("历史积分记录获取完成")
-    except Exception as e:
-        logging.error(f"批量获取历史积分记录失败: {e}")
-    logging.info("=" * 50)
-
     # 记录签到结束
     email_sent = False
 
@@ -764,3 +756,4 @@ def main(trigger_type='manual', trigger_by=None):
 
 if __name__ == '__main__':
     main()
+    fetch_points_history.fetch_all_accounts_history()

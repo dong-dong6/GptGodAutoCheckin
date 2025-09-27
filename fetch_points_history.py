@@ -10,7 +10,6 @@ import logging
 import time
 from DrissionPage import ChromiumPage, ChromiumOptions
 from points_history_manager import PointsHistoryManager
-from main import get_chromium_options
 import yaml
 
 # 配置日志
@@ -18,6 +17,14 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+def get_chromium_options(browser_path, arguments):
+    """创建并配置ChromiumOptions"""
+    options = ChromiumOptions()
+    options.set_paths(browser_path=browser_path)
+    for argument in arguments:
+        options.set_argument(argument)
+    return options
 
 def load_config():
     """加载配置文件"""
