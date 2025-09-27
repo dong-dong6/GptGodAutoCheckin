@@ -10,7 +10,7 @@ import logging
 import time
 from DrissionPage import ChromiumPage, ChromiumOptions
 from points_history_manager import PointsHistoryManager
-from browser_options import get_chromium_options
+from main import get_chromium_options
 import yaml
 
 # 配置日志
@@ -346,26 +346,31 @@ def fetch_all_history(email, password, domain='gptgod.online'):
                 break
 
             # 检查重复记录（基于API返回的ID）
+            # 历史记录是按时间倒序排列的（最新的在前面）
+            # 一旦遇到重复记录，说明后面的都是已获取过的
             new_records = []
+            found_duplicate = False
+
             for record in records:
                 # 检查是否已存在相同ID的记录
                 if not manager.record_exists(record.get('id')):
                     new_records.append(record)
                 else:
-                    logging.debug(f"跳过重复记录: ID={record.get('id')}")
+                    logging.info(f"遇到重复记录: ID={record.get('id')}，停止获取更多页面")
+                    found_duplicate = True
+                    break  # 遇到第一个重复记录就停止处理当前页剩余记录
 
             if new_records:
                 all_records.extend(new_records)
                 # 批量保存到数据库
                 added_count = manager.batch_add_records(new_records, email)
                 logging.info(f"第{page}页: 获取{len(new_records)}条新记录，成功保存{added_count}条")
-            else:
-                logging.info(f"第{page}页: 所有记录都已存在，跳过")
 
-            # 如果所有记录都是重复的，可能已经获取完毕
-            if len(new_records) == 0 and len(records) > 0:
-                logging.info("所有记录都已存在，可能已获取完所有新数据")
-                # 但继续获取下一页，确保完整性
+            # 如果遇到重复记录，停止获取后续页面
+            if found_duplicate:
+                logging.info("已遇到重复记录，不再获取后续页面")
+                stop_fetching = True
+                break
 
             # 检查DOM中是否还有下一页按钮
             logging.info(f"当前页: {page}, 本页记录数: {len(records)}")
