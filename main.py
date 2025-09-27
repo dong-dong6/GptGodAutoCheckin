@@ -91,261 +91,7 @@ def get_chromium_options(browser_path: str, arguments: list) -> ChromiumOptions:
     return options
 
 
-def fetch_history_page_api(driver, page_number, page_size=100, is_first_page_with_listener=False):
-    """获取指定页积分历史数据，逻辑与 fetch_points_history.py 保持一致"""
-    try:
-        if not is_first_page_with_listener:
-            driver.listen.start('/api/user/token/list')
 
-        if page_number == 1 and not is_first_page_with_listener:
-            logging.info("等待第1页API响应...")
-            time.sleep(3)
-        elif page_number > 1 or (page_number == 1 and is_first_page_with_listener):
-            if page_number > 1:
-                try:
-                    next_button = None
-                    next_selectors = [
-                        'li[@title="下一页"]/button[not(@disabled)]',
-                        'button[@aria-label="Next Page" and not(@disabled)]',
-                        'li[contains(@class, "ant-pagination-next") and not(contains(@class, "ant-pagination-disabled"))]'
-                    ]
-
-                    for selector in next_selectors:
-                        try:
-                            next_button = driver.ele(f'xpath://{selector}')
-                            if next_button:
-                                logging.info(f"使用选择器 {selector} 定位到下一页按钮")
-                                break
-                        except Exception:
-                            continue
-
-                    if not next_button:
-                        css_selectors = [
-                            '.ant-pagination-next:not(.ant-pagination-disabled)',
-                            'li.ant-pagination-next:not(.ant-pagination-disabled)'
-                        ]
-                        for css_selector in css_selectors:
-                            try:
-                                next_button = driver.ele(f'css:{css_selector}')
-                                if next_button:
-                                    logging.info(f"使用CSS选择器 {css_selector} 定位到下一页按钮")
-                                    break
-                            except Exception:
-                                continue
-
-                    if next_button:
-                        next_button.click()
-                        logging.info(f"点击下一页，准备获取第{page_number}页数据")
-                        time.sleep(2)
-                    else:
-                        logging.error(f"未找到可用的下一页按钮，无法获取第{page_number}页")
-                        return None
-                except Exception as e:
-                    logging.error(f"翻页到第{page_number}页时出错: {e}")
-                    return None
-            else:
-                logging.info("第1页已预先监听，等待API响应...")
-
-        resp = driver.listen.wait(timeout=10)
-
-        if resp:
-            response_body = resp.response.body
-            if isinstance(response_body, str):
-                import json
-                data = json.loads(response_body)
-            else:
-                data = response_body
-
-            if data.get('code') == 0:
-                page_data = data.get('data', {}) or {}
-                records = page_data.get('rows', []) or []
-                logging.info(f"成功获取第{page_number}页数据，共{len(records)}条记录")
-                return page_data
-            logging.error(f"API返回异常: {data}")
-        else:
-            logging.error(f"未收到第{page_number}页响应")
-    except Exception as e:
-        logging.error(f"获取第{page_number}页失败: {e}")
-    finally:
-        if not is_first_page_with_listener:
-            try:
-                driver.listen.stop()
-            except Exception:
-                pass
-
-    return None
-
-
-def fetch_points_history_for_account(driver, email, domain='gptgod.online'):
-    try:
-        driver.get(f'https://{domain}/#/token?tab=history')
-        time.sleep(5)
-
-        manager = PointsHistoryManager()
-        total_new_records = 0
-        all_records = []
-
-        driver.listen.start('/api/user/token/list')
-        logging.info("开始监听积分历史API")
-
-        first_page_data = None
-
-        try:
-            logging.info(f"账号 {email} 开始获取积分历史记录")
-            page_size_selectors = [
-                '.ant-select.ant-pagination-options-size-changer',
-                '.ant-pagination-options-size-changer .ant-select-selector',
-                '.ant-select-selection-item[title*="条/页"]'
-            ]
-
-            page_size_dropdown = None
-            for selector in page_size_selectors:
-                try:
-                    page_size_dropdown = driver.ele(f'css:{selector}')
-                    if page_size_dropdown:
-                        logging.info(f"找到分页大小选择器: {selector}")
-                        break
-                except Exception:
-                    continue
-
-            if page_size_dropdown:
-                current_text = getattr(page_size_dropdown, 'text', '未知')
-                logging.info(f"当前分页设置: {current_text}")
-
-                page_size_dropdown.click()
-                logging.info("展开分页下拉菜单")
-                time.sleep(2)
-
-                size_100_selectors = [
-                    'div.ant-select-item[title="100 条/页"]',
-                    'div.ant-select-item:contains("100")',
-                    '.rc-virtual-list-holder div[title*="100"]',
-                    '.ant-select-item-option-content:contains("100")'
-                ]
-
-                option_found = False
-                for option_selector in size_100_selectors:
-                    try:
-                        option_100 = driver.ele(f'css:{option_selector}')
-                        if option_100:
-                            option_100.click()
-                            logging.info(f"成功切换为100条/页，选择器: {option_selector}")
-                            option_found = True
-                            time.sleep(3)
-                            break
-                    except Exception:
-                        continue
-
-                if option_found:
-                    logging.info("等待分页切换触发的API响应...")
-                    resp = driver.listen.wait(timeout=15)
-                    if resp and resp.response.body:
-                        response_body = resp.response.body
-                        if isinstance(response_body, str):
-                            import json
-                            data = json.loads(response_body)
-                        else:
-                            data = response_body
-
-                        if data.get('code') == 0:
-                            first_page_data = data.get('data', {}) or {}
-                            records = first_page_data.get('rows', []) or []
-                            logging.info(f"切换分页后预获取到{len(records)}条记录")
-                        else:
-                            logging.warning(f"分页API返回异常: {data}")
-                    else:
-                        logging.warning("未捕获到分页API响应，继续使用当前数据")
-                else:
-                    logging.warning("未找到100条/页选项，使用默认分页设置")
-            else:
-                logging.warning("未找到分页大小选择器，使用默认分页设置")
-        except Exception as e:
-            logging.debug(f"设置分页大小时出错: {e}")
-        finally:
-            try:
-                driver.listen.stop()
-            except Exception:
-                pass
-
-        time.sleep(2)
-
-        page = 1
-
-        while True:
-            logging.info(f"正在获取第{page}页积分记录...")
-
-            if page == 1 and first_page_data:
-                logging.info("使用分页设置时获取到的第1页数据")
-                page_data = first_page_data
-            else:
-                page_data = fetch_history_page_api(driver, page)
-                if not page_data:
-                    logging.warning(f"第{page}页未获取到数据，终止拉取")
-                    break
-
-            records = page_data.get('rows', []) or []
-            if not records:
-                logging.info("没有更多记录，结束拉取")
-                break
-
-            new_records = []
-            for record in records:
-                if not manager.record_exists(record.get('id')):
-                    new_records.append(record)
-                else:
-                    logging.debug(f"跳过重复记录: ID={record.get('id')}")
-
-            if new_records:
-                added_count = manager.batch_add_records(new_records, email)
-                total_new_records += added_count
-                all_records.extend(new_records)
-                logging.info(f"第{page}页: 获取{len(new_records)}条记录，写入{added_count}条")
-            else:
-                logging.info(f"第{page}页: {len(records)}条记录均已存在")
-
-            has_next_page = False
-            try:
-                next_selectors = [
-                    'li[@title="下一页"]/button[not(@disabled)]',
-                    'button[@aria-label="Next Page" and not(@disabled)]',
-                    'li[contains(@class, "ant-pagination-next") and not(contains(@class, "ant-pagination-disabled"))]',
-                    '.ant-pagination-next:not(.ant-pagination-disabled)',
-                    'li.ant-pagination-next:not(.ant-pagination-disabled)'
-                ]
-
-                for selector in next_selectors:
-                    if selector.startswith('.'):
-                        next_button = driver.ele(f'css:{selector}')
-                    else:
-                        next_button = driver.ele(f'xpath://{selector}')
-
-                    if next_button:
-                        has_next_page = True
-                        logging.info(f"检测到下一页按钮: {selector}")
-                        break
-
-                if not has_next_page:
-                    logging.info("未检测到可用的下一页按钮，抓取结束")
-                    break
-
-            except Exception as e:
-                logging.warning(f"检测下一页按钮时异常: {e}")
-                break
-
-            page += 1
-            time.sleep(2)
-
-        logging.info(f"账号 {email} 本次新增 {total_new_records} 条积分记录")
-        return all_records
-    except Exception as e:
-        logging.error(f"获取积分历史记录失败: {e}")
-    finally:
-        try:
-            driver.listen.stop()
-        except Exception:
-            pass
-
-    return []
 
 
 
@@ -425,11 +171,7 @@ def perform_checkin(driver, email, domain, logger_info, data_manager):
                 except:
                     pass
 
-            # 已签到的账号也获取历史积分记录，获取到重复记录为止
-            try:
-                fetch_points_history_for_account(driver, email, domain)
-            except Exception as e:
-                logging.warning(f"获取历史积分记录失败: {e}")
+            # 已签到的账号不再单独获取历史记录
 
             return {
                 'success': True,
@@ -501,11 +243,7 @@ def perform_checkin(driver, email, domain, logger_info, data_manager):
                             data_manager.record_checkin(email, True, points_earned)
                             logging.info(f"账号 {email} 签到成功，当前积分: {current_points}")
 
-                            # 获取并保存历史积分记录，获取到重复记录为止
-                            try:
-                                fetch_points_history_for_account(driver, email, domain)
-                            except Exception as e:
-                                logging.warning(f"获取历史积分记录失败: {e}")
+                            # 签到成功，历史记录将在所有账号签到后批量获取
             except Exception as e:
                 logging.debug(f"获取签到后用户信息失败: {e}")
             finally:
@@ -894,6 +632,17 @@ def main(trigger_type='manual', trigger_by=None):
 
     # 添加积分快照
     data_manager.add_points_snapshot()
+
+    # 所有账号签到完成后，批量获取历史积分记录
+    logging.info("=" * 50)
+    logging.info("开始批量获取所有账号的历史积分记录...")
+    try:
+        from fetch_points_history import fetch_all_accounts_history
+        fetch_all_accounts_history()
+        logging.info("历史积分记录获取完成")
+    except Exception as e:
+        logging.error(f"批量获取历史积分记录失败: {e}")
+    logging.info("=" * 50)
 
     # 记录签到结束
     email_sent = False
