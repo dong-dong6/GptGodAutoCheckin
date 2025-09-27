@@ -1,3 +1,24 @@
+# 域名配置
+domains:
+  primary: "gptgod.work"  # 主域名
+  backup: "gptgod.online"  # 备用域名
+  auto_switch: true  # 自动切换域名
+
+# 定时签到配置
+schedule:
+  enabled: true  # 是否启用定时签到
+  times:  # 签到时间列表（24小时制）
+    - "09:00"  # 上午9点
+    - "21:00"  # 晚上9点（可选）
+  # 可以添加多个时间点
+
+# Web服务认证配置（可选）
+web_auth:
+  enabled: true  # 是否启用Web认证
+  username: admin  # 登录用户名
+  password: admin123  # 登录密码
+  api_token: ''  # API访问令牌（留空则自动生成）
+
 # SMTP邮件配置（可选）
 smtp:
   enabled: false  # 是否启用邮件通知
