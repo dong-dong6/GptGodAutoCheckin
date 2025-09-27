@@ -753,7 +753,6 @@ def main(trigger_type='manual', trigger_by=None):
 
     if isHeadless:
         display.stop()
-
+    fetch_points_history.fetch_all_accounts_history()
 if __name__ == '__main__':
     main()
-    fetch_points_history.fetch_all_accounts_history()

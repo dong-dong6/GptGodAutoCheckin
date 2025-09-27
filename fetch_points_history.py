@@ -26,14 +26,6 @@ def get_chromium_options(browser_path, arguments):
         options.set_argument(argument)
     return options
 
-def load_config():
-    """加载配置文件"""
-    try:
-        with open('account.yml', 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f)
-    except Exception as e:
-        logging.error(f"加载配置失败: {e}")
-        return {}
 
 def login_account(driver, email, password, domain='gptgod.online'):
     """登录账号"""
@@ -435,7 +427,10 @@ def fetch_all_history(email, password, domain='gptgod.online'):
 
 def fetch_all_accounts_history():
     """获取所有账号的历史记录"""
+    # 使用 main.py 中的 load_config 函数
+    from main import load_config
     config = load_config()
+
     accounts = config.get('account', [])
     domain_config = config.get('domains', {})
     primary_domain = domain_config.get('primary', 'gptgod.online')
@@ -450,7 +445,7 @@ def fetch_all_accounts_history():
     total_new_records = 0
 
     for i, account in enumerate(accounts):
-        email = account.get('mail')
+        email = account.get('mail')  # 配置中字段名是 mail
         password = account.get('password')
 
         if not email or not password:
