@@ -7,7 +7,6 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
 import schedule
-import yaml
 
 import fetch_points_history
 from CloudflareBypasser import CloudflareBypasser
@@ -496,42 +495,23 @@ def process_account_with_retry(account, options, domains, logger_info, data_mana
     }
 
 def load_config():
-    """加载配置 - 优先使用数据库配置，如果不存在则使用YAML配置"""
+    """从数据库加载配置"""
     config_manager = ConfigManager()
 
-    # 检查数据库中是否有配置
     try:
-        # 尝试获取配置
+        # 从数据库获取所有配置
         config = config_manager.get_all_config()
 
-        # 检查是否有账号配置（作为数据库配置是否初始化的标志）
-        if config['account']:
-            logging.info("使用数据库配置")
-            return config
-        else:
-            logging.info("数据库配置为空，尝试从YAML迁移")
-    except Exception as e:
-        logging.warning(f"读取数据库配置失败: {e}，尝试从YAML迁移")
+        # 检查是否有账号配置
+        if not config['account']:
+            logging.error("数据库中没有账号配置")
+            return {'account': [], 'domains': {}, 'smtp': {}}
 
-    # 如果数据库配置不存在或为空，尝试从YAML迁移
-    yaml_file = 'account.yml'
-    if os.path.exists(yaml_file):
-        logging.info(f"从 {yaml_file} 迁移配置到数据库")
-        if config_manager.migrate_from_yaml(yaml_file):
-            logging.info("配置迁移成功，使用数据库配置")
-            return config_manager.get_all_config()
-        else:
-            logging.error("配置迁移失败，回退到YAML配置")
-            # 回退到YAML配置
-            try:
-                with open(yaml_file, 'r', encoding='utf-8') as f:
-                    return yaml.safe_load(f)
-            except Exception as e:
-                logging.error(f"读取YAML配置失败: {e}")
-                raise
-    else:
-        logging.error(f"配置文件 {yaml_file} 不存在")
-        raise FileNotFoundError(f"配置文件 {yaml_file} 不存在")
+        logging.info("使用数据库配置")
+        return config
+    except Exception as e:
+        logging.error(f"读取数据库配置失败: {e}")
+        return {'account': [], 'domains': {}, 'smtp': {}}
 
 
 def main(trigger_type='manual', trigger_by=None):
@@ -542,7 +522,7 @@ def main(trigger_type='manual', trigger_by=None):
         display = Display(visible=0, size=(1920, 1080))
         display.start()
 
-    # Read configuration - prioritize database config over YAML
+    # Read configuration from database
     config = load_config()
 
     accounts = config.get('account', [])

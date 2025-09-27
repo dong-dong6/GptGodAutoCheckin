@@ -10,7 +10,6 @@ import logging
 import time
 from DrissionPage import ChromiumPage, ChromiumOptions
 from points_history_manager import PointsHistoryManager
-import yaml
 
 # 配置日志
 logging.basicConfig(
