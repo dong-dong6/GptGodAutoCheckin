@@ -13,9 +13,12 @@ class PointsHistoryManager:
         """初始化数据库
 
         Args:
-            db_path: 数据库文件路径（保留参数但使用全局管理器）
+            db_path: 数据库文件路径（已废弃，保留参数仅为兼容性）
+
+        Note:
+            实际使用统一数据库管理器(gptgod_checkin.db)
         """
-        self.db = get_db()
+        self.db = get_db()  # 使用统一数据库
 
 
     def add_record(self, record_data, email=None):
