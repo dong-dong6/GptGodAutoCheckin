@@ -1013,13 +1013,7 @@ HTML_TEMPLATE = '''
                 <li class="menu-item">
                     <a class="menu-link" onclick="switchPage('points')">
                         <span class="menu-icon">💰</span>
-                        <span class="menu-text">积分统计</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" onclick="switchPage('history')">
-                        <span class="menu-icon">📊</span>
-                        <span class="menu-text">历史记录</span>
+                        <span class="menu-text">积分管理</span>
                     </a>
                 </li>
                 <li class="menu-item">
@@ -1165,67 +1159,58 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
 
-                <!-- 积分统计页面 -->
+                <!-- 积分管理页面（合并统计和历史） -->
                 <div id="points-page" class="page-content">
                     <div class="card">
                         <h2 class="card-title">
                             <span class="card-title-icon">💰</span>
-                            积分统计
+                            积分管理中心
                         </h2>
-                        <div style="margin-bottom: 20px;">
-                            <button class="btn btn-secondary" onclick="loadPointsStatistics()">刷新数据</button>
-                            <span class="info-badge">实时统计</span>
-                            <span class="info-badge">多维分析</span>
-                        </div>
-                        <div id="points-statistics">
-                            <div class="stats-grid">
-                                <div class="stat-item">
-                                    <h4>总积分</h4>
-                                    <p class="stat-value">加载中...</p>
-                                    <p style="color: #6b7280; font-size: 14px;">所有账号总和</p>
-                                </div>
-                                <div class="stat-item">
-                                    <h4>账号统计</h4>
-                                    <p>总账号: {{ accounts|length }}</p>
-                                    <p>活跃: 加载中...</p>
-                                    <p style="color: #6b7280; font-size: 14px;">配置状态</p>
-                                </div>
-                                <div class="stat-item">
-                                    <h4>平均积分</h4>
-                                    <p class="stat-value">计算中...</p>
-                                    <p style="color: #6b7280; font-size: 14px;">单账号平均</p>
-                                </div>
-                                <div class="stat-item">
-                                    <h4>数据状态</h4>
-                                    <p class="stat-value">待更新</p>
-                                    <p style="color: #6b7280; font-size: 14px;">点击刷新按钮更新</p>
-                                </div>
-                            </div>
-                            <div style="margin-top: 30px; padding: 20px; background: #f8fafc; border-radius: 10px;">
-                                <h3>📊 数据概览</h3>
-                                <p style="color: #6b7280; margin-top: 10px;">
-                                    此页面显示所有账号的积分统计信息，包括总积分、账号分布、平均值等详细数据。
-                                    数据来源于积分历史记录数据库，可点击上方"刷新数据"按钮获取最新统计信息。
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- 历史记录页面 -->
-                <div id="history-page" class="page-content">
-                    <div class="card">
-                        <h2 class="card-title">
-                            <span class="card-title-icon">📊</span>
-                            历史记录分析
-                        </h2>
+                        <!-- Tab切换 -->
                         <div class="tabs">
-                            <button class="tab-btn active" onclick="switchTab('overview')">总览</button>
-                            <button class="tab-btn" onclick="switchTab('trend')">趋势</button>
-                            <button class="tab-btn" onclick="switchTab('sources')">来源</button>
+                            <button class="tab-btn active" onclick="switchTab('statistics')">积分统计</button>
+                            <button class="tab-btn" onclick="switchTab('history')">历史记录</button>
+                            <button class="tab-btn" onclick="switchTab('trend')">趋势分析</button>
+                            <button class="tab-btn" onclick="switchTab('sources')">来源分布</button>
                         </div>
 
-                        <div id="overview-tab" class="tab-content active">
+                        <!-- 积分统计Tab -->
+                        <div id="statistics-tab" class="tab-content active">
+                            <div style="margin-bottom: 20px;">
+                                <button class="btn btn-secondary" onclick="loadPointsStatistics()">刷新数据</button>
+                                <span class="info-badge">实时统计</span>
+                                <span class="info-badge">多维分析</span>
+                            </div>
+                            <div id="points-statistics">
+                                <div class="stats-grid">
+                                    <div class="stat-item">
+                                        <h4>总积分</h4>
+                                        <p class="stat-value">加载中...</p>
+                                        <p style="color: #6b7280; font-size: 14px;">所有账号总和</p>
+                                    </div>
+                                    <div class="stat-item">
+                                        <h4>账号统计</h4>
+                                        <p>总账号: {{ accounts|length }}</p>
+                                        <p>活跃: 加载中...</p>
+                                        <p style="color: #6b7280; font-size: 14px;">配置状态</p>
+                                    </div>
+                                    <div class="stat-item">
+                                        <h4>平均积分</h4>
+                                        <p class="stat-value">计算中...</p>
+                                        <p style="color: #6b7280; font-size: 14px;">单账号平均</p>
+                                    </div>
+                                    <div class="stat-item">
+                                        <h4>数据状态</h4>
+                                        <p class="stat-value">待更新</p>
+                                        <p style="color: #6b7280; font-size: 14px;">点击刷新按钮更新</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 历史记录Tab -->
+                        <div id="history-tab" class="tab-content">
                             <div class="history-controls">
                                 <select id="account-filter">
                                     <option value="">所有账号</option>
@@ -1251,6 +1236,7 @@ HTML_TEMPLATE = '''
                             </div>
                         </div>
 
+                        <!-- 趋势分析Tab -->
                         <div id="trend-tab" class="tab-content">
                             <div id="history-chart-container">
                                 <div style="padding: 40px 20px; text-align: center; background: #f8fafc; border-radius: 10px;">
@@ -1263,6 +1249,7 @@ HTML_TEMPLATE = '''
                             </div>
                         </div>
 
+                        <!-- 来源分布Tab -->
                         <div id="sources-tab" class="tab-content">
                             <div class="sources-container">
                                 <div class="chart-container">
@@ -1558,8 +1545,7 @@ receiver2@example.com"></textarea>
                 'dashboard': '仪表盘',
                 'checkin': '签到管理',
                 'redeem': '兑换码',
-                'points': '积分统计',
-                'history': '历史记录',
+                'points': '积分管理',
                 'logs': '日志查看',
                 'settings': '系统设置'
             };
@@ -1614,9 +1600,6 @@ receiver2@example.com"></textarea>
                     break;
                 case 'points':
                     loadPointsStatistics();
-                    break;
-                case 'history':
-                    loadHistoryData();
                     break;
                 case 'logs':
                     loadLogs();
@@ -1713,26 +1696,33 @@ receiver2@example.com"></textarea>
             document.getElementById(elementId).innerHTML = html;
         }
 
-        // Tab切换功能（历史记录页面内）
+        // Tab切换功能（积分管理页面内）
         function switchTab(tabName) {
-            // 隐藏所有tab内容
-            const tabs = document.querySelectorAll('.tab-content');
-            tabs.forEach(tab => tab.classList.remove('active'));
+            // 获取当前页面
+            if (currentPage === 'points') {
+                // 隐藏所有tab内容
+                const tabs = document.querySelectorAll('#points-page .tab-content');
+                tabs.forEach(tab => tab.classList.remove('active'));
 
-            // 移除所有按钮的active类
-            const buttons = document.querySelectorAll('.tab-btn');
-            buttons.forEach(btn => btn.classList.remove('active'));
+                // 移除所有按钮的active类
+                const buttons = document.querySelectorAll('#points-page .tab-btn');
+                buttons.forEach(btn => btn.classList.remove('active'));
 
-            // 显示目标tab
-            document.getElementById(tabName + '-tab').classList.add('active');
-            // 添加对应按钮的active类
-            event.target.classList.add('active');
+                // 显示目标tab
+                document.getElementById(tabName + '-tab').classList.add('active');
+                // 添加对应按钮的active类
+                event.target.classList.add('active');
 
-            // 根据tab类型加载相应数据
-            if (tabName === 'trend') {
-                loadHistoryData();
-            } else if (tabName === 'sources') {
-                loadSourcesData();
+                // 根据tab类型加载相应数据
+                if (tabName === 'statistics') {
+                    loadPointsStatistics();
+                } else if (tabName === 'history') {
+                    // 历史记录tab不自动加载，需要用户点击按钮
+                } else if (tabName === 'trend') {
+                    loadHistoryData();
+                } else if (tabName === 'sources') {
+                    loadSourcesData();
+                }
             }
         }
 
