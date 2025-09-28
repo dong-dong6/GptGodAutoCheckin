@@ -3272,225 +3272,257 @@ def add_account_page():
     """账号添加页面（无需登录）"""
     return render_template_string('''
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>添加GPT-GOD账号</title>
+    <title>添加账号 - GPT-GOD自动签到</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(180deg, #f2f2f7 0%, #ffffff 100%);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
             padding: 20px;
         }
-
         .container {
-            background: white;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            padding: 40px;
-            max-width: 500px;
+            padding: 48px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.08);
             width: 100%;
+            max-width: 500px;
+            border: 1px solid rgba(255, 255, 255, 0.7);
         }
-
-        .header {
+        .logo {
             text-align: center;
             margin-bottom: 40px;
         }
-
-        .logo {
-            font-size: 48px;
-            margin-bottom: 10px;
+        .logo-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #007AFF, #5856D6);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 36px;
+            color: white;
         }
-
         h1 {
-            color: #333;
             font-size: 28px;
-            margin-bottom: 10px;
+            font-weight: 700;
+            color: #1d1d1f;
+            text-align: center;
+            margin-bottom: 12px;
         }
-
         .subtitle {
-            color: #666;
-            font-size: 14px;
+            font-size: 15px;
+            color: #86868b;
+            text-align: center;
+            margin-bottom: 40px;
         }
-
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 24px;
         }
-
         label {
             display: block;
             margin-bottom: 8px;
-            color: #555;
+            color: #1d1d1f;
+            font-size: 14px;
             font-weight: 500;
         }
-
         input {
             width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
+            padding: 14px 16px;
+            border: 1px solid #d2d2d7;
+            border-radius: 12px;
             font-size: 16px;
-            transition: all 0.3s;
+            background: white;
+            transition: all 0.2s;
         }
-
         input:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            border-color: #007AFF;
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
         }
-
         .btn {
             width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 14px 20px;
+            background: linear-gradient(135deg, #007AFF, #5856D6);
             color: white;
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
+            margin-top: 8px;
         }
-
         .btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            box-shadow: 0 10px 30px rgba(0, 122, 255, 0.3);
         }
-
         .btn:disabled {
-            background: #ccc;
+            background: #d2d2d7;
             cursor: not-allowed;
             transform: none;
+            box-shadow: none;
         }
-
         .progress-container {
             display: none;
             margin-top: 30px;
             padding: 20px;
-            background: #f8f9fa;
-            border-radius: 10px;
+            background: #f5f5f7;
+            border-radius: 12px;
+            border: 1px solid #e0e0e5;
         }
-
         .progress-title {
-            color: #333;
+            color: #1d1d1f;
             font-weight: 600;
             margin-bottom: 15px;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
-
         .progress-log {
             max-height: 200px;
             overflow-y: auto;
             background: white;
-            padding: 10px;
+            padding: 12px;
             border-radius: 8px;
-            font-family: 'Courier New', monospace;
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
             font-size: 13px;
-            line-height: 1.5;
+            line-height: 1.6;
+            border: 1px solid #d2d2d7;
         }
-
         .log-entry {
             margin-bottom: 8px;
-            padding: 5px;
-            border-left: 3px solid #e0e0e0;
-            padding-left: 10px;
+            padding: 6px 10px;
+            border-left: 3px solid #d2d2d7;
+            background: #fafafa;
+            border-radius: 4px;
+            margin-left: 0;
         }
-
         .log-entry.info {
-            border-color: #4CAF50;
-            background: #f1f8e9;
+            border-color: #007AFF;
+            background: #f0f9ff;
+            color: #0051d5;
         }
-
         .log-entry.warning {
-            border-color: #ff9800;
-            background: #fff3e0;
+            border-color: #ff9500;
+            background: #fff8f0;
+            color: #f57c00;
         }
-
         .log-entry.error {
-            border-color: #f44336;
-            background: #ffebee;
+            border-color: #ff3b30;
+            background: #fff5f5;
+            color: #d70015;
         }
-
         .log-entry.success {
-            border-color: #4CAF50;
-            background: #e8f5e9;
+            border-color: #34c759;
+            background: #f0fff4;
+            color: #00875a;
             font-weight: 600;
         }
-
         .spinner {
             display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(0,0,0,.3);
+            width: 16px;
+            height: 16px;
+            border: 2px solid #007AFF;
             border-radius: 50%;
-            border-top-color: #667eea;
-            animation: spin 1s ease-in-out infinite;
+            border-top-color: transparent;
+            animation: spin 0.8s linear infinite;
         }
-
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-
         .result {
             margin-top: 20px;
-            padding: 15px;
-            border-radius: 10px;
+            padding: 16px;
+            border-radius: 12px;
             display: none;
+            font-size: 15px;
+            font-weight: 500;
         }
-
         .result.success {
-            background: #e8f5e9;
-            color: #2e7d32;
-            border: 1px solid #4CAF50;
+            background: #f0fff4;
+            color: #00875a;
+            border: 1px solid #34c759;
         }
-
         .result.error {
-            background: #ffebee;
-            color: #c62828;
-            border: 1px solid #f44336;
+            background: #fff5f5;
+            color: #d70015;
+            border: 1px solid #ff3b30;
         }
-
         .back-link {
-            display: block;
-            text-align: center;
-            margin-top: 20px;
-            color: #667eea;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 24px;
+            color: #007AFF;
             text-decoration: none;
-            font-size: 14px;
+            font-size: 15px;
+            font-weight: 500;
+            transition: opacity 0.2s;
         }
-
         .back-link:hover {
-            text-decoration: underline;
+            opacity: 0.7;
+        }
+        .divider {
+            height: 1px;
+            background: #d2d2d7;
+            margin: 30px 0;
+        }
+        .info-box {
+            background: #f5f5f7;
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 20px;
+            border: 1px solid #e0e0e5;
+        }
+        .info-box h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1d1d1f;
+            margin-bottom: 8px;
+        }
+        .info-box p {
+            font-size: 13px;
+            color: #86868b;
+            line-height: 1.5;
+            margin: 0;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="logo">🎯</div>
+        <div class="logo">
+            <div class="logo-icon">🎯</div>
             <h1>添加GPT-GOD账号</h1>
-            <p class="subtitle">输入账号信息，系统将自动验证并保存</p>
+            <p class="subtitle">输入账号信息，系统将自动验证并保存到数据库</p>
         </div>
 
         <form id="addAccountForm">
             <div class="form-group">
                 <label for="email">邮箱地址</label>
-                <input type="email" id="email" name="email" placeholder="example@gmail.com" required>
+                <input type="email" id="email" name="email" placeholder="请输入邮箱地址" required autocomplete="email">
             </div>
 
             <div class="form-group">
                 <label for="password">账号密码</label>
-                <input type="password" id="password" name="password" placeholder="输入密码" required>
+                <input type="password" id="password" name="password" placeholder="请输入密码" required autocomplete="new-password">
             </div>
 
             <button type="submit" class="btn" id="submitBtn">
@@ -3501,14 +3533,29 @@ def add_account_page():
         <div class="progress-container" id="progressContainer">
             <div class="progress-title">
                 <span class="spinner"></span>
-                验证进度
+                <span>验证进度</span>
             </div>
             <div class="progress-log" id="progressLog"></div>
         </div>
 
         <div class="result" id="result"></div>
 
-        <a href="/" class="back-link">← 返回主页</a>
+        <div class="divider"></div>
+
+        <div class="info-box">
+            <h3>使用说明</h3>
+            <p>• 系统将实际登录GPT-GOD网站验证账号有效性</p>
+            <p>• 验证过程可能需要10-30秒，请耐心等待</p>
+            <p>• 验证成功后账号将自动保存到系统中</p>
+            <p>• 如遇到Cloudflare验证，系统会自动处理</p>
+        </div>
+
+        <a href="/" class="back-link">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            返回管理后台
+        </a>
     </div>
 
     <script>
@@ -3517,12 +3564,18 @@ def add_account_page():
         document.getElementById('addAccountForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const email = document.getElementById('email').value;
+            const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
             const submitBtn = document.getElementById('submitBtn');
             const progressContainer = document.getElementById('progressContainer');
             const progressLog = document.getElementById('progressLog');
             const resultDiv = document.getElementById('result');
+
+            // 基本验证
+            if (!email || !password) {
+                showResult('error', '请输入完整的账号信息');
+                return;
+            }
 
             // 重置状态
             submitBtn.disabled = true;
@@ -3545,23 +3598,30 @@ def add_account_page():
 
                 if (data.type === 'complete') {
                     eventSource.close();
+                    eventSource = null;
                     submitBtn.disabled = false;
                     submitBtn.textContent = '验证并添加账号';
 
                     if (data.success) {
                         showResult('success', '✅ 账号添加成功！');
                         // 清空表单
-                        document.getElementById('email').value = '';
-                        document.getElementById('password').value = '';
+                        setTimeout(() => {
+                            document.getElementById('email').value = '';
+                            document.getElementById('password').value = '';
+                            progressContainer.style.display = 'none';
+                        }, 2000);
                     } else {
-                        showResult('error', '❌ ' + data.message);
+                        showResult('error', '❌ ' + (data.message || '账号验证失败'));
                     }
                 }
             };
 
             eventSource.onerror = (error) => {
                 console.error('SSE Error:', error);
-                eventSource.close();
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
                 submitBtn.disabled = false;
                 submitBtn.textContent = '验证并添加账号';
                 addLogEntry('error', '连接中断，请重试');
@@ -3574,7 +3634,12 @@ def add_account_page():
             const entry = document.createElement('div');
             entry.className = `log-entry ${type}`;
 
-            const timestamp = new Date().toLocaleTimeString();
+            const timestamp = new Date().toLocaleTimeString('zh-CN', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
             entry.innerHTML = `[${timestamp}] ${message}`;
 
             progressLog.appendChild(entry);
@@ -3587,6 +3652,11 @@ def add_account_page():
             resultDiv.textContent = message;
             resultDiv.style.display = 'block';
         }
+
+        // 页面加载完成后聚焦到邮箱输入框
+        window.addEventListener('load', () => {
+            document.getElementById('email').focus();
+        });
     </script>
 </body>
 </html>
