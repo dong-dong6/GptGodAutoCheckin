@@ -11,9 +11,7 @@ import schedule
 import fetch_points_history
 from CloudflareBypasser import CloudflareBypasser
 from DrissionPage import ChromiumPage, ChromiumOptions
-from checkin_logger import CheckinLogger
 from checkin_logger_db import CheckinLoggerDB
-from data_manager import DataManager
 from points_history_manager import PointsHistoryManager
 from config_manager import ConfigManager
 
@@ -538,24 +536,16 @@ def main(trigger_type='manual', trigger_by=None):
     if auto_switch and backup_domain and backup_domain != primary_domain:
         domains.append(backup_domain)
 
-    # 初始化日志记录器 - 优先使用数据库版本
-    try:
-        logger_db = CheckinLoggerDB()
-        session_id = logger_db.log_checkin_start(trigger_type, trigger_by)
-        use_db_logger = True
-        logger = None  # 初始化为None
-        log_idx = None  # 初始化为None
-        logging.info("使用数据库日志记录器")
-    except Exception as e:
-        logging.warning(f"数据库日志记录器初始化失败，回退到文件日志: {e}")
-        logger = CheckinLogger()
-        log_idx = logger.log_checkin_start(trigger_type, trigger_by)
-        logger_db = None  # 初始化为None
-        session_id = None  # 初始化为None
-        use_db_logger = False
+    # 初始化日志记录器
+    logger_db = CheckinLoggerDB()
+    session_id = logger_db.log_checkin_start(trigger_type, trigger_by)
+    use_db_logger = True
+    logger = None  # 初始化为None
+    log_idx = None  # 初始化为None
+    logging.info("使用数据库日志记录器")
 
     # 初始化数据管理器
-    data_manager = DataManager()
+    data_manager = None
 
     # 浏览器配置
     browser_path = os.getenv('CHROME_PATH', "/usr/bin/google-chrome")
@@ -614,7 +604,7 @@ def main(trigger_type='manual', trigger_by=None):
         logging.info(f"账号 {result['email']} 处理完成: {result['message']}")
 
     # 添加积分快照
-    data_manager.add_points_snapshot()
+    # data_manager.add_points_snapshot()  # 已移除data_manager
 
     # 记录签到结束
     email_sent = False
@@ -622,8 +612,8 @@ def main(trigger_type='manual', trigger_by=None):
     # 生成邮件内容
     if config.get('smtp', {}).get('enabled', False):
         # 获取积分统计信息
-        points_distribution = data_manager.get_points_distribution()
-        top_accounts = data_manager.get_top_accounts(5)
+        points_distribution = {}
+        top_accounts = []
 
         email_body = f"""
         <html>
@@ -636,7 +626,7 @@ def main(trigger_type='manual', trigger_by=None):
                 <li>成功签到: {success_count}</li>
                 <li>签到失败: {fail_count}</li>
                 <li>获得积分: {total_points}</li>
-                <li>所有账号总积分: {data_manager.summary['total_points']}</li>
+                <li>所有账号总积分: {total_points}</li>
             </ul>
 
             <h3>💰 积分分布</h3>

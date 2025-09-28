@@ -1,8 +1,8 @@
-import sqlite3
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
 import logging
+from unified_db_manager import get_db
 
 
 class CheckinLoggerDB:
@@ -16,72 +16,7 @@ class CheckinLoggerDB:
         """
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
-        self.db_file = self.data_dir / 'checkin_logs.db'
-        self._init_database()
-
-    def _init_database(self):
-        """初始化数据库表结构"""
-        with sqlite3.connect(self.db_file) as conn:
-            cursor = conn.cursor()
-
-            # 创建签到会话表
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS checkin_sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    start_time TEXT NOT NULL,
-                    end_time TEXT,
-                    trigger_type TEXT NOT NULL DEFAULT 'manual',
-                    trigger_by TEXT,
-                    total_accounts INTEGER DEFAULT 0,
-                    success_count INTEGER DEFAULT 0,
-                    failed_count INTEGER DEFAULT 0,
-                    already_checked_count INTEGER DEFAULT 0,
-                    duration_seconds REAL,
-                    status TEXT NOT NULL DEFAULT 'running',
-                    email_sent BOOLEAN DEFAULT 0,
-                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-                )
-            ''')
-
-            # 创建账号签到记录表
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS account_checkin_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id INTEGER NOT NULL,
-                    account_email TEXT NOT NULL,
-                    checkin_time TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    message TEXT DEFAULT '',
-                    points INTEGER DEFAULT 0,
-                    domain TEXT,
-                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                    FOREIGN KEY (session_id) REFERENCES checkin_sessions (id)
-                )
-            ''')
-
-            # 创建账号统计表
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS account_statistics (
-                    email TEXT PRIMARY KEY,
-                    total_checkins INTEGER DEFAULT 0,
-                    successful_checkins INTEGER DEFAULT 0,
-                    failed_checkins INTEGER DEFAULT 0,
-                    total_points INTEGER DEFAULT 0,
-                    last_checkin TEXT,
-                    consecutive_days INTEGER DEFAULT 0,
-                    first_checkin TEXT,
-                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-                )
-            ''')
-
-            # 创建索引
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_session_start_time ON checkin_sessions(start_time)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_account_logs_email ON account_checkin_logs(account_email)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_account_logs_session ON account_checkin_logs(session_id)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_account_logs_time ON account_checkin_logs(checkin_time)')
-
-            conn.commit()
-            logging.info("签到日志数据库表初始化完成")
+        self.db = get_db()
 
     def migrate_from_json_logs(self, log_dir='checkin_logs'):
         """从JSON日志文件迁移到数据库
@@ -95,7 +30,7 @@ class CheckinLoggerDB:
             return False
 
         try:
-            with sqlite3.connect(self.db_file) as conn:
+            with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 migrated_sessions = 0
                 migrated_logs = 0
@@ -163,7 +98,6 @@ class CheckinLoggerDB:
                         logging.error(f"迁移日志文件 {log_file} 失败: {e}")
                         continue
 
-                conn.commit()
                 logging.info(f"日志迁移完成: {migrated_sessions} 个会话, {migrated_logs} 条记录")
                 return True
 
@@ -205,21 +139,17 @@ class CheckinLoggerDB:
 
     def log_checkin_start(self, trigger_type='manual', trigger_by=None):
         """记录签到开始"""
-        with sqlite3.connect(self.db_file) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO checkin_sessions (start_time, trigger_type, trigger_by)
-                VALUES (?, ?, ?)
-            ''', (datetime.now().isoformat(), trigger_type, trigger_by))
-            session_id = cursor.lastrowid
-            conn.commit()
-            return session_id
+        session_id = self.db.execute('''
+            INSERT INTO checkin_sessions (start_time, trigger_type, trigger_by)
+            VALUES (?, ?, ?)
+        ''', (datetime.now().isoformat(), trigger_type, trigger_by))
+        return session_id
 
     def log_account_result(self, session_id, account_email, status, message='', points=0, domain=None):
         """记录单个账号签到结果"""
         checkin_time = datetime.now().isoformat()
 
-        with sqlite3.connect(self.db_file) as conn:
+        with self.db.get_connection() as conn:
             cursor = conn.cursor()
 
             # 插入账号日志
@@ -241,33 +171,30 @@ class CheckinLoggerDB:
                 cursor.execute('UPDATE checkin_sessions SET already_checked_count = already_checked_count + 1 WHERE id = ?', (session_id,))
 
             cursor.execute('UPDATE checkin_sessions SET total_accounts = total_accounts + 1 WHERE id = ?', (session_id,))
-            conn.commit()
 
     def log_checkin_end(self, session_id, email_sent=False):
         """记录签到结束"""
         end_time = datetime.now().isoformat()
 
-        with sqlite3.connect(self.db_file) as conn:
-            cursor = conn.cursor()
+        # 获取开始时间计算耗时
+        result = self.db.execute_one(
+            'SELECT start_time FROM checkin_sessions WHERE id = ?',
+            (session_id,)
+        )
 
-            # 获取开始时间计算耗时
-            cursor.execute('SELECT start_time FROM checkin_sessions WHERE id = ?', (session_id,))
-            result = cursor.fetchone()
+        if result:
+            start_time = datetime.fromisoformat(result[0])
+            duration = (datetime.fromisoformat(end_time) - start_time).total_seconds()
 
-            if result:
-                start_time = datetime.fromisoformat(result[0])
-                duration = (datetime.fromisoformat(end_time) - start_time).total_seconds()
-
-                cursor.execute('''
-                    UPDATE checkin_sessions
-                    SET end_time = ?, status = 'completed', email_sent = ?, duration_seconds = ?
-                    WHERE id = ?
-                ''', (end_time, email_sent, duration, session_id))
-                conn.commit()
+            self.db.execute('''
+                UPDATE checkin_sessions
+                SET end_time = ?, status = 'completed', email_sent = ?, duration_seconds = ?
+                WHERE id = ?
+            ''', (end_time, email_sent, duration, session_id))
 
     def get_statistics(self):
         """获取统计信息"""
-        with sqlite3.connect(self.db_file) as conn:
+        with self.db.get_connection() as conn:
             cursor = conn.cursor()
 
             # 全部时间统计
@@ -354,79 +281,70 @@ class CheckinLoggerDB:
         """获取账号历史记录"""
         cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
 
-        with sqlite3.connect(self.db_file) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT checkin_time, status, message, points, domain
-                FROM account_checkin_logs
-                WHERE account_email = ? AND checkin_time >= ?
-                ORDER BY checkin_time DESC
-            ''', (email, cutoff_date))
+        results = self.db.execute('''
+            SELECT checkin_time, status, message, points, domain
+            FROM account_checkin_logs
+            WHERE account_email = ? AND checkin_time >= ?
+            ORDER BY checkin_time DESC
+        ''', (email, cutoff_date))
 
-            results = cursor.fetchall()
-            return [
-                {
-                    'time': result[0],
-                    'status': result[1],
-                    'message': result[2],
-                    'points': result[3],
-                    'domain': result[4]
-                }
-                for result in results
-            ]
+        return [
+            {
+                'time': result[0],
+                'status': result[1],
+                'message': result[2],
+                'points': result[3],
+                'domain': result[4]
+            }
+            for result in results
+        ]
 
     def get_recent_sessions(self, limit=10):
         """获取最近的签到会话"""
-        with sqlite3.connect(self.db_file) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT id, start_time, end_time, trigger_type, total_accounts,
-                       success_count, failed_count, duration_seconds, status
-                FROM checkin_sessions
-                ORDER BY start_time DESC
-                LIMIT ?
-            ''', (limit,))
+        results = self.db.execute('''
+            SELECT id, start_time, end_time, trigger_type, total_accounts,
+                   success_count, failed_count, duration_seconds, status
+            FROM checkin_sessions
+            ORDER BY start_time DESC
+            LIMIT ?
+        ''', (limit,))
 
-            results = cursor.fetchall()
-            return [
-                {
-                    'id': result[0],
-                    'start_time': result[1],
-                    'end_time': result[2],
-                    'trigger_type': result[3],
-                    'total_accounts': result[4],
-                    'success_count': result[5],
-                    'failed_count': result[6],
-                    'duration_seconds': result[7],
-                    'status': result[8]
-                }
-                for result in results
-            ]
+        return [
+            {
+                'id': result[0],
+                'start_time': result[1],
+                'end_time': result[2],
+                'trigger_type': result[3],
+                'total_accounts': result[4],
+                'success_count': result[5],
+                'failed_count': result[6],
+                'duration_seconds': result[7],
+                'status': result[8]
+            }
+            for result in results
+        ]
 
     def get_account_statistics(self):
         """获取所有账号统计信息"""
-        with sqlite3.connect(self.db_file) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT email, total_checkins, successful_checkins, failed_checkins,
-                       total_points, last_checkin, consecutive_days
-                FROM account_statistics
-                ORDER BY total_points DESC
-            ''')
+        results = self.db.execute('''
+            SELECT email, total_checkins, successful_checkins, failed_checkins,
+                   total_points, last_checkin, consecutive_days
+            FROM account_statistics
+            ORDER BY total_points DESC
+        ''')
 
-            results = cursor.fetchall()
-            return [
-                {
-                    'email': result[0],
-                    'total_checkins': result[1],
-                    'successful_checkins': result[2],
-                    'failed_checkins': result[3],
-                    'total_points': result[4],
-                    'last_checkin': result[5],
-                    'consecutive_days': result[6]
-                }
-                for result in results
-            ]
+        return [
+            {
+                'email': result[0],
+                'total_checkins': result[1],
+                'successful_checkins': result[2],
+                'failed_checkins': result[3],
+                'total_points': result[4],
+                'last_checkin': result[5],
+                'consecutive_days': result[6]
+            }
+            for result in results
+        ]
 
 
 # 使用示例

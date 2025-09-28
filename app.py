@@ -13,9 +13,7 @@ import yaml
 from CloudflareBypasser import CloudflareBypasser
 from DrissionPage import ChromiumPage, ChromiumOptions
 from main import send_email_notification, get_chromium_options, load_config
-from checkin_logger import CheckinLogger
 from checkin_logger_db import CheckinLoggerDB
-from data_manager import DataManager
 from points_history_manager import PointsHistoryManager
 from config_manager import ConfigManager
 
@@ -2964,52 +2962,38 @@ def api_status():
 @app.route('/api/logs')
 @require_auth
 def api_logs():
-    """获取签到日志 - 优先使用数据库版本"""
+    """获取签到日志"""
     try:
-        # 尝试使用数据库日志
-        try:
-            logger_db = CheckinLoggerDB()
-            recent_sessions = logger_db.get_recent_sessions(10)
+        logger_db = CheckinLoggerDB()
+        recent_sessions = logger_db.get_recent_sessions(10)
 
-            # 转换格式以兼容前端
-            logs = []
-            for session in recent_sessions:
-                logs.append({
-                    'id': session['id'],
-                    'start_time': session['start_time'],
-                    'end_time': session['end_time'],
-                    'trigger_type': session['trigger_type'],
-                    'total_accounts': session['total_accounts'],
-                    'success_count': session['success_count'],
-                    'failed_count': session['failed_count'],
-                    'status': session['status'],
-                    'accounts': []  # 详细账号信息需要额外查询
-                })
+        # 转换格式以兼容前端
+        logs = []
+        for session in recent_sessions:
+            logs.append({
+                'id': session['id'],
+                'start_time': session['start_time'],
+                'end_time': session['end_time'],
+                'trigger_type': session['trigger_type'],
+                'total_accounts': session['total_accounts'],
+                'success_count': session['success_count'],
+                'failed_count': session['failed_count'],
+                'status': session['status'],
+                'accounts': []  # 详细账号信息需要额外查询
+            })
 
-            return jsonify({'success': True, 'logs': logs, 'source': 'database'})
-        except:
-            # 回退到文件日志
-            logger = CheckinLogger()
-            logs = logger.daily_logs
-            return jsonify({'success': True, 'logs': logs, 'source': 'file'})
+        return jsonify({'success': True, 'logs': logs, 'source': 'database'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
 @app.route('/api/stats')
 @require_auth
 def api_stats():
-    """获取统计信息 - 优先使用数据库版本"""
+    """获取统计信息"""
     try:
-        # 尝试使用数据库统计
-        try:
-            logger_db = CheckinLoggerDB()
-            stats = logger_db.get_statistics()
-            return jsonify({'success': True, 'stats': stats, 'source': 'database'})
-        except:
-            # 回退到文件统计
-            logger = CheckinLogger()
-            stats = logger.get_statistics()
-            return jsonify({'success': True, 'stats': stats, 'source': 'file'})
+        logger_db = CheckinLoggerDB()
+        stats = logger_db.get_statistics()
+        return jsonify({'success': True, 'stats': stats, 'source': 'database'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
@@ -3138,19 +3122,25 @@ def reload_schedule():
 @app.route('/api/points')
 @require_auth
 def api_points():
-    """获取积分统计信息 - 使用最新快照"""
+    """获取积分统计信息 - 使用数据库"""
     try:
-        data_manager = DataManager()
-        snapshot_data = data_manager.get_latest_snapshot_data()
+        from points_history_manager import PointsHistoryManager
+        history_manager = PointsHistoryManager()
+
+        # 获取统计信息
+        stats = history_manager.get_statistics()
 
         return jsonify({
             'success': True,
-            'total_points': snapshot_data['total_points'],
-            'statistics': snapshot_data['statistics'],
-            'distribution': data_manager.get_points_distribution(),
-            'accounts_detail': snapshot_data,
-            'top_accounts': data_manager.get_top_accounts(10),
-            'last_update': snapshot_data['last_update']
+            'total_points': stats.get('total_points', 0),
+            'statistics': {
+                'total_accounts': stats.get('total_accounts', 0),
+                'active_accounts': stats.get('total_accounts', 0)
+            },
+            'distribution': {},
+            'accounts_detail': {'accounts': []},
+            'top_accounts': [],
+            'last_update': None
         })
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
@@ -3161,9 +3151,8 @@ def api_points_trend():
     """获取积分趋势"""
     try:
         days = request.args.get('days', 7, type=int)
-        data_manager = DataManager()
-        trend = data_manager.get_points_trend(days)
-        return jsonify({'success': True, 'trend': trend})
+        # 功能已移除
+        return jsonify({'success': True, 'trend': []})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
@@ -3173,12 +3162,8 @@ def api_points_export():
     """导出积分数据"""
     try:
         export_type = request.args.get('type', 'summary')
-        data_manager = DataManager()
-        export_file = data_manager.export_data(export_type)
-        if export_file:
-            return jsonify({'success': True, 'file': export_file})
-        else:
-            return jsonify({'success': False, 'message': '导出失败'})
+        # 功能已移除
+        return jsonify({'success': False, 'message': '导出功能暂不可用'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
