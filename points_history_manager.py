@@ -9,17 +9,28 @@ from unified_db_manager import get_db
 class PointsHistoryManager:
     """积分历史记录管理器"""
 
-    def __init__(self, db_path='accounts_data/points_history.db'):
-        """初始化数据库
+    def __init__(self):
+        """初始化数据库管理器
 
-        Args:
-            db_path: 数据库文件路径（已废弃，保留参数仅为兼容性）
-
-        Note:
-            实际使用统一数据库管理器(gptgod_checkin.db)
+        使用统一数据库管理器(gptgod_checkin.db)
         """
         self.db = get_db()  # 使用统一数据库
 
+
+    def record_exists(self, record_id):
+        """检查记录是否已存在
+
+        Args:
+            record_id: 记录ID
+
+        Returns:
+            bool: 记录是否存在
+        """
+        result = self.db.execute_one(
+            'SELECT id FROM points_history WHERE id = ?',
+            (record_id,)
+        )
+        return result is not None
 
     def add_record(self, record_data, email=None):
         """添加一条积分记录
