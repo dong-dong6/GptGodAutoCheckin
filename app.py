@@ -5,9 +5,10 @@ import os
 import hashlib
 import secrets
 import sqlite3
+import json
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Flask, request, jsonify, render_template_string, session, redirect, url_for, make_response
+from flask import Flask, request, jsonify, render_template_string, session, redirect, url_for, make_response, Response
 import schedule
 import yaml
 from CloudflareBypasser import CloudflareBypasser
@@ -3263,6 +3264,459 @@ def api_points_history_overview():
         })
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
+
+# ========== 账号添加页面（无需登录） ==========
+
+@app.route('/add-account')
+def add_account_page():
+    """账号添加页面（无需登录）"""
+    return render_template_string('''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>添加GPT-GOD账号</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .logo {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress-container {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .progress-title {
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .progress-log {
+            max-height: 200px;
+            overflow-y: auto;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 5px;
+            border-left: 3px solid #e0e0e0;
+            padding-left: 10px;
+        }
+
+        .log-entry.info {
+            border-color: #4CAF50;
+            background: #f1f8e9;
+        }
+
+        .log-entry.warning {
+            border-color: #ff9800;
+            background: #fff3e0;
+        }
+
+        .log-entry.error {
+            border-color: #f44336;
+            background: #ffebee;
+        }
+
+        .log-entry.success {
+            border-color: #4CAF50;
+            background: #e8f5e9;
+            font-weight: 600;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0,0,0,.3);
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .result.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #4CAF50;
+        }
+
+        .result.error {
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #f44336;
+        }
+
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">🎯</div>
+            <h1>添加GPT-GOD账号</h1>
+            <p class="subtitle">输入账号信息，系统将自动验证并保存</p>
+        </div>
+
+        <form id="addAccountForm">
+            <div class="form-group">
+                <label for="email">邮箱地址</label>
+                <input type="email" id="email" name="email" placeholder="example@gmail.com" required>
+            </div>
+
+            <div class="form-group">
+                <label for="password">账号密码</label>
+                <input type="password" id="password" name="password" placeholder="输入密码" required>
+            </div>
+
+            <button type="submit" class="btn" id="submitBtn">
+                验证并添加账号
+            </button>
+        </form>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-title">
+                <span class="spinner"></span>
+                验证进度
+            </div>
+            <div class="progress-log" id="progressLog"></div>
+        </div>
+
+        <div class="result" id="result"></div>
+
+        <a href="/" class="back-link">← 返回主页</a>
+    </div>
+
+    <script>
+        let eventSource = null;
+
+        document.getElementById('addAccountForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const submitBtn = document.getElementById('submitBtn');
+            const progressContainer = document.getElementById('progressContainer');
+            const progressLog = document.getElementById('progressLog');
+            const resultDiv = document.getElementById('result');
+
+            // 重置状态
+            submitBtn.disabled = true;
+            submitBtn.textContent = '验证中...';
+            progressContainer.style.display = 'block';
+            progressLog.innerHTML = '';
+            resultDiv.style.display = 'none';
+
+            // 关闭之前的连接
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            // 建立SSE连接
+            eventSource = new EventSource(`/api/account/verify-stream?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`);
+
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                addLogEntry(data.type, data.message);
+
+                if (data.type === 'complete') {
+                    eventSource.close();
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '验证并添加账号';
+
+                    if (data.success) {
+                        showResult('success', '✅ 账号添加成功！');
+                        // 清空表单
+                        document.getElementById('email').value = '';
+                        document.getElementById('password').value = '';
+                    } else {
+                        showResult('error', '❌ ' + data.message);
+                    }
+                }
+            };
+
+            eventSource.onerror = (error) => {
+                console.error('SSE Error:', error);
+                eventSource.close();
+                submitBtn.disabled = false;
+                submitBtn.textContent = '验证并添加账号';
+                addLogEntry('error', '连接中断，请重试');
+                showResult('error', '验证过程出错，请重试');
+            };
+        });
+
+        function addLogEntry(type, message) {
+            const progressLog = document.getElementById('progressLog');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+
+            const timestamp = new Date().toLocaleTimeString();
+            entry.innerHTML = `[${timestamp}] ${message}`;
+
+            progressLog.appendChild(entry);
+            progressLog.scrollTop = progressLog.scrollHeight;
+        }
+
+        function showResult(type, message) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.textContent = message;
+            resultDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
+    ''')
+
+@app.route('/api/account/verify-stream')
+def verify_account_stream():
+    """SSE接口：验证并添加账号"""
+    email = request.args.get('email')
+    password = request.args.get('password')
+
+    def generate():
+        """生成SSE事件流"""
+        try:
+            # 发送开始消息
+            yield f"data: {json.dumps({'type': 'info', 'message': '开始验证账号...'})}\n\n"
+
+            # 检查账号是否已存在
+            config_manager = ConfigManager()
+            existing_accounts = config_manager.get_accounts()
+            for account in existing_accounts:
+                if account['mail'] == email:
+                    yield f"data: {json.dumps({'type': 'warning', 'message': '账号已存在于系统中'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '账号已存在'})}\n\n"
+                    return
+
+            yield f"data: {json.dumps({'type': 'info', 'message': '账号不存在，继续验证...'})}\n\n"
+
+            # 获取配置
+            config = load_config()
+            domain_config = config.get('domains', {})
+            primary_domain = domain_config.get('primary', 'gptgod.online')
+
+            yield f"data: {json.dumps({'type': 'info', 'message': f'使用域名: {primary_domain}'})}\n\n"
+
+            # 创建浏览器实例
+            yield f"data: {json.dumps({'type': 'info', 'message': '启动浏览器...'})}\n\n"
+
+            browser_config = config.get('browser', {})
+            browser_path = browser_config.get('path', "/usr/bin/google-chrome")
+            arguments = browser_config.get('arguments', [
+                "--disable-blink-features=AutomationControlled",
+                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
+                "--window-size=1920,1080",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--disable-dev-shm-usage"
+            ])
+
+            options = get_chromium_options(browser_path, arguments)
+            driver = ChromiumPage(addr_or_opts=options)
+
+            yield f"data: {json.dumps({'type': 'info', 'message': '浏览器启动成功'})}\n\n"
+
+            # 访问登录页面
+            yield f"data: {json.dumps({'type': 'info', 'message': '访问登录页面...'})}\n\n"
+            driver.get(f'https://{primary_domain}/#/login')
+            time.sleep(3)
+
+            # 输入账号密码
+            yield f"data: {json.dumps({'type': 'info', 'message': '输入账号信息...'})}\n\n"
+            email_input = driver.ele('xpath://input[@placeholder="请输入邮箱"]', timeout=10)
+            password_input = driver.ele('xpath://input[@type="password"]', timeout=10)
+
+            if not email_input or not password_input:
+                yield f"data: {json.dumps({'type': 'error', 'message': '无法找到登录表单'})}\n\n"
+                yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '页面加载失败'})}\n\n"
+                driver.quit()
+                return
+
+            email_input.clear()
+            email_input.input(email)
+            password_input.clear()
+            password_input.input(password)
+
+            # 点击登录
+            yield f"data: {json.dumps({'type': 'info', 'message': '尝试登录...'})}\n\n"
+            login_button = driver.ele('xpath://button[contains(@class, "ant-btn-primary")]', timeout=5)
+            if login_button:
+                login_button.click()
+                time.sleep(5)
+
+            # 检查登录结果
+            yield f"data: {json.dumps({'type': 'info', 'message': '检查登录结果...'})}\n\n"
+
+            # 检查是否有错误提示
+            error_msg = driver.ele('xpath://div[contains(@class, "ant-message-error")]', timeout=2)
+            if error_msg:
+                yield f"data: {json.dumps({'type': 'error', 'message': '登录失败：账号或密码错误'})}\n\n"
+                yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '账号验证失败'})}\n\n"
+                driver.quit()
+                return
+
+            # 检查是否成功进入主页
+            success_indicator = driver.ele('xpath://div[contains(text(), "今日签到")]', timeout=10)
+            if not success_indicator:
+                # 可能需要处理Cloudflare验证
+                yield f"data: {json.dumps({'type': 'warning', 'message': '可能需要处理验证码...'})}\n\n"
+                cf_bypasser = CloudflareBypasser(driver, max_retries=3)
+                cf_bypasser.bypass()
+                time.sleep(3)
+
+                success_indicator = driver.ele('xpath://div[contains(text(), "今日签到")]', timeout=10)
+
+            if success_indicator:
+                yield f"data: {json.dumps({'type': 'success', 'message': '登录成功！'})}\n\n"
+
+                # 保存账号到数据库
+                yield f"data: {json.dumps({'type': 'info', 'message': '保存账号信息...'})}\n\n"
+                config_manager.add_account(email, password)
+
+                yield f"data: {json.dumps({'type': 'success', 'message': '账号已成功添加到系统'})}\n\n"
+                yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': '账号添加成功'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'message': '无法验证账号有效性'})}\n\n"
+                yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '账号验证失败'})}\n\n"
+
+            driver.quit()
+
+        except Exception as e:
+            logging.error(f"账号验证错误: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': f'验证过程出错: {str(e)}'})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '验证失败'})}\n\n"
+
+            try:
+                driver.quit()
+            except:
+                pass
+
+    return Response(generate(), mimetype='text/event-stream')
 
 def run_schedule():
     """运行定时任务"""
