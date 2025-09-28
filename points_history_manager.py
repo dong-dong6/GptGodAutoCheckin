@@ -208,96 +208,135 @@ class PointsHistoryManager:
         )
         return result[0] if result else None
 
-    def get_statistics(self, email=None):
+    def get_statistics(self, email=None, uid=None):
         """获取统计信息
 
         Args:
-            email: 如果指定，则获取该邮箱的统计；否则获取全部统计
+            email: 如果指定，则获取该邮箱的统计
+            uid: 如果指定，则获取该用户ID的统计
         """
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
 
+            # 构建查询条件
+            where_clause = ""
+            params = []
             if email:
-                # 获取指定邮箱的统计
-                cursor.execute('''
-                    SELECT
-                        COUNT(*) as total_records,
-                        SUM(tokens) as total_points,
-                        MIN(create_time) as first_record,
-                        MAX(create_time) as last_record
-                    FROM points_history
-                    WHERE email = ?
-                ''', (email,))
-            else:
-                # 获取全部统计
-                cursor.execute('''
-                    SELECT
-                        COUNT(*) as total_records,
-                        SUM(tokens) as total_points,
-                        COUNT(DISTINCT email) as total_accounts,
-                        MIN(create_time) as first_record,
-                        MAX(create_time) as last_record
-                    FROM points_history
-                ''')
+                where_clause = " WHERE email = ?"
+                params.append(email)
+            elif uid:
+                where_clause = " WHERE uid = ?"
+                params.append(uid)
+
+            # 获取总记录数和总积分
+            cursor.execute(f'''
+                SELECT
+                    COUNT(*) as total_count,
+                    SUM(CASE WHEN tokens > 0 THEN tokens ELSE 0 END) as total_earned,
+                    SUM(CASE WHEN tokens < 0 THEN ABS(tokens) ELSE 0 END) as total_spent,
+                    SUM(tokens) as net_points,
+                    MIN(create_time) as first_record,
+                    MAX(create_time) as last_record
+                FROM points_history
+                {where_clause}
+            ''', params)
 
             result = cursor.fetchone()
 
-            if email:
-                return {
-                    'email': email,
-                    'total_records': result[0] or 0,
-                    'total_points': result[1] or 0,
-                    'first_record': result[2],
-                    'last_record': result[3]
-                }
-            else:
-                return {
-                    'total_records': result[0] or 0,
-                    'total_points': result[1] or 0,
-                    'total_accounts': result[2] or 0,
-                    'first_record': result[3],
-                    'last_record': result[4]
+            # 获取各来源统计
+            cursor.execute(f'''
+                SELECT
+                    source,
+                    COUNT(*) as count,
+                    SUM(CASE WHEN tokens > 0 THEN tokens ELSE 0 END) as earned,
+                    SUM(CASE WHEN tokens < 0 THEN ABS(tokens) ELSE 0 END) as spent
+                FROM points_history
+                {where_clause}
+                GROUP BY source
+            ''', params)
+
+            source_stats = {}
+            for row in cursor.fetchall():
+                source_stats[row[0]] = {
+                    'count': row[1],
+                    'earned': row[2] or 0,
+                    'spent': row[3] or 0
                 }
 
-    def get_daily_summary(self, days=30, email=None):
+            # 如果没有指定email或uid，获取总账户数
+            if not email and not uid:
+                cursor.execute('SELECT COUNT(DISTINCT email) FROM points_history')
+                total_accounts = cursor.fetchone()[0] or 0
+            else:
+                total_accounts = 1
+
+            return {
+                'total_count': result[0] or 0,
+                'total_earned': result[1] or 0,
+                'total_spent': result[2] or 0,
+                'net_points': result[3] or 0,
+                'first_record': result[4],
+                'last_record': result[5],
+                'total_accounts': total_accounts,
+                'by_source': source_stats,
+                # 兼容旧字段名
+                'total_records': result[0] or 0,
+                'total_points': result[3] or 0
+            }
+
+    def get_daily_summary(self, days=30, email=None, uid=None):
         """获取每日积分汇总
 
         Args:
             days: 统计天数
             email: 如果指定，则获取该邮箱的汇总
+            uid: 如果指定，则获取该用户ID的汇总
         """
         cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
 
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
 
+            # 构建查询条件
+            where_conditions = ["DATE(create_time) >= ?"]
+            params = [cutoff_date]
+
             if email:
-                cursor.execute('''
+                where_conditions.append("email = ?")
+                params.append(email)
+            elif uid:
+                where_conditions.append("uid = ?")
+                params.append(uid)
+
+            where_clause = " WHERE " + " AND ".join(where_conditions)
+
+            if email or uid:
+                cursor.execute(f'''
                     SELECT
                         DATE(create_time) as date,
                         SUM(tokens) as daily_points,
                         COUNT(*) as records_count
                     FROM points_history
-                    WHERE email = ? AND DATE(create_time) >= ?
+                    {where_clause}
                     GROUP BY DATE(create_time)
                     ORDER BY date DESC
-                ''', (email, cutoff_date))
+                ''', params)
             else:
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT
                         DATE(create_time) as date,
                         SUM(tokens) as daily_points,
                         COUNT(*) as records_count,
                         COUNT(DISTINCT email) as accounts_count
                     FROM points_history
-                    WHERE DATE(create_time) >= ?
+                    {where_clause}
                     GROUP BY DATE(create_time)
                     ORDER BY date DESC
-                ''', (cutoff_date,))
+                ''', params)
 
             results = cursor.fetchall()
 
-            if email:
+            if email or uid:
                 return [
                     {
                         'date': row[0],
