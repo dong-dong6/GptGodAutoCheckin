@@ -6,7 +6,64 @@ import shutil
 import tempfile
 import random
 import logging
+import platform
+from pathlib import Path
 from DrissionPage import ChromiumPage, ChromiumOptions
+
+
+def find_browser_path():
+    """自动检测浏览器路径
+
+    Returns:
+        str: 浏览器可执行文件路径
+    """
+    # 优先使用环境变量
+    env_path = os.getenv('CHROME_PATH')
+    if env_path and os.path.exists(env_path):
+        logging.info(f"使用环境变量指定的浏览器: {env_path}")
+        return env_path
+
+    system = platform.system()
+
+    if system == "Windows":
+        # Windows 浏览器路径列表
+        possible_paths = [
+            # Edge (推荐)
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            # Chrome
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            os.path.expanduser(r"~\AppData\Local\Google\Chrome\Application\chrome.exe"),
+            # Brave
+            r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+            r"C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe",
+        ]
+    elif system == "Darwin":  # macOS
+        possible_paths = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        ]
+    else:  # Linux
+        possible_paths = [
+            "/usr/bin/google-chrome",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+            "/usr/bin/microsoft-edge",
+            "/snap/bin/chromium",
+        ]
+
+    # 检查每个可能的路径
+    for path in possible_paths:
+        if os.path.exists(path):
+            logging.info(f"自动检测到浏览器: {path}")
+            return path
+
+    # 如果都找不到，返回默认路径并警告
+    default_path = possible_paths[0] if possible_paths else "chrome"
+    logging.warning(f"未找到浏览器，使用默认路径: {default_path}")
+    return default_path
 
 
 class BrowserManager:
@@ -22,7 +79,7 @@ class BrowserManager:
         self.temp_dir = None
         self.random_port = None
         self.driver = None
-        self.browser_path = os.getenv('CHROME_PATH', r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
+        self.browser_path = find_browser_path()
 
     def _create_temp_dir(self):
         """创建临时数据目录"""
