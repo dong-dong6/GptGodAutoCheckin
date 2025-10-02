@@ -1617,30 +1617,65 @@ receiver2@example.com"></textarea>
             }
         }
 
-        // 签到功能
+        // 签到功能 - 使用SSE
         async function triggerCheckin() {
-            document.getElementById('checkin-loading').style.display = 'block';
-            document.getElementById('checkin-result').innerHTML = '';
+            const resultDiv = document.getElementById('checkin-result');
+            const loadingDiv = document.getElementById('checkin-loading');
+
+            loadingDiv.style.display = 'block';
+            resultDiv.innerHTML = '<div style="color: #666; padding: 10px; background: #f5f5f5; border-radius: 4px; margin-top: 10px;"><div style="margin-bottom: 5px;">签到进度：</div><div id="checkin-progress"></div></div>';
+
+            const progressDiv = document.getElementById('checkin-progress');
+            let messages = [];
 
             try {
-                const response = await fetch('/api/checkin', {
-                    method: 'POST'
-                });
-                const data = await response.json();
+                const eventSource = new EventSource('/api/checkin-stream');
 
-                if (data.success) {
-                    showResults('checkin-result', data.results, 'success');
-                } else {
-                    showMessage('checkin-result', data.message, 'error');
-                }
+                eventSource.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+
+                        if (data.type === 'info' || data.type === 'log') {
+                            messages.push(`<div style="color: #666; font-size: 12px; padding: 2px 0;">ℹ️ ${data.message}</div>`);
+                            progressDiv.innerHTML = messages.slice(-20).join(''); // 只显示最近20条
+                            progressDiv.scrollTop = progressDiv.scrollHeight;
+                        } else if (data.type === 'success') {
+                            messages.push(`<div style="color: #52c41a; font-weight: bold; padding: 2px 0;">✅ ${data.message}</div>`);
+                            progressDiv.innerHTML = messages.slice(-20).join('');
+                            progressDiv.scrollTop = progressDiv.scrollHeight;
+                        } else if (data.type === 'error') {
+                            messages.push(`<div style="color: #f5222d; font-weight: bold; padding: 2px 0;">❌ ${data.message}</div>`);
+                            progressDiv.innerHTML = messages.slice(-20).join('');
+                            progressDiv.scrollTop = progressDiv.scrollHeight;
+                        } else if (data.type === 'complete') {
+                            eventSource.close();
+                            loadingDiv.style.display = 'none';
+
+                            if (data.success) {
+                                showMessage('checkin-result', data.message, 'success');
+                                // 刷新仪表盘数据
+                                if (currentPage === 'dashboard') {
+                                    setTimeout(() => loadDashboardData(), 1000);
+                                }
+                            } else {
+                                showMessage('checkin-result', data.message, 'error');
+                            }
+                        }
+                    } catch (e) {
+                        console.error('解析SSE消息失败:', e);
+                    }
+                };
+
+                eventSource.onerror = function(error) {
+                    console.error('SSE错误:', error);
+                    eventSource.close();
+                    loadingDiv.style.display = 'none';
+                    showMessage('checkin-result', '签到连接中断，请重试', 'error');
+                };
+
             } catch (error) {
+                loadingDiv.style.display = 'none';
                 showMessage('checkin-result', '签到失败：' + error.message, 'error');
-            } finally {
-                document.getElementById('checkin-loading').style.display = 'none';
-                // 刷新仪表盘数据
-                if (currentPage === 'dashboard') {
-                    setTimeout(() => loadDashboardData(), 1000);
-                }
             }
         }
 
@@ -2598,32 +2633,123 @@ def perform_checkin(trigger_type='api', trigger_by=None):
         logging.error(f"签到任务失败: {e}")
         return False
 
-def redeem_code(code, account_email, driver):
+def redeem_code(code, account_email, driver, domain='gptgod.online'):
     """兑换单个兑换码"""
     try:
+        logging.info(f"开始兑换: 账号 {account_email}, 兑换码 {code}")
+
         # 导航到兑换页面
-        driver.get('https://gptgod.work/#/token')
+        driver.get(f'https://{domain}/#/token')
         time.sleep(8)
 
-        # 查找兑换码输入框
+        # 查找兑换码输入框 - 根据实际页面结构更新选择器
         code_input = driver.ele('xpath://input[@placeholder="请输入您的积分兑换码, 点击兑换"]', timeout=10)
         if not code_input:
             return {'success': False, 'message': '找不到兑换码输入框'}
 
-        # 输入兑换码
+        # 清空并输入兑换码
         code_input.clear()
+        time.sleep(0.5)
         code_input.input(code)
         time.sleep(1)
 
-        # 点击兑换按钮
-        redeem_button = driver.ele('xpath://button[.//span[@aria-label="gift"] or contains(., "兑换")]', timeout=5)
-        if redeem_button and not redeem_button.attr('disabled'):
-            redeem_button.click()
-            time.sleep(3)
+        # 查找并点击兑换按钮 - 使用更精确的选择器
+        redeem_button = driver.ele('xpath://button[.//span[@aria-label="gift"]]', timeout=5)
+        if not redeem_button:
+            # 备用选择器
+            redeem_button = driver.ele('xpath://button[contains(., "兑换") and not(contains(., "购买"))]', timeout=5)
 
-            # 检查结果（可能有弹窗提示）
-            # 这里需要根据实际页面反馈调整
-            return {'success': True, 'message': f'兑换码 {code} 兑换成功'}
+        if redeem_button and not redeem_button.attr('disabled'):
+            # 点击兑换按钮
+            redeem_button.click()
+            logging.info(f"点击兑换按钮，兑换码: {code}")
+
+            # 立即检查并处理Cloudflare验证
+            time.sleep(2)  # 给页面一点时间加载
+            driver_bypasser = CloudflareBypasser(driver)
+            driver_bypasser.bypass()
+            # 首先检查是否有弹窗（Modal）
+            modal_indicators = [
+                'xpath://div[contains(@class, "ant-modal-content")]',
+                'xpath://div[contains(@class, "ant-notification")]',
+                'xpath://div[contains(@class, "ant-alert")]'
+            ]
+
+            for indicator in modal_indicators:
+                modal = driver.ele(indicator, timeout=2)
+                if modal:
+                    modal_text = modal.text if hasattr(modal, 'text') else ''
+                    if "您已使用过" in modal_text or "已使用" in modal_text:
+                        # 尝试关闭弹窗
+                        close_btn = driver.ele('xpath://button[contains(@class, "ant-modal-close")]', timeout=1)
+                        if close_btn:
+                            close_btn.click()
+                        logging.info(f"兑换码 {code} 已被使用过")
+                        return {'success': False, 'message': f'兑换码已被使用过'}
+                    elif "成功" in modal_text:
+                        logging.info(f"兑换码 {code} 兑换成功")
+                        return {'success': True, 'message': f'兑换成功'}
+                    elif "undefined" in modal_text:
+                        logging.info(f"兑换码 {code} 已被使用（服务器返回undefined）")
+                        return {'success': False, 'message': f'兑换码已被使用'}
+
+            # 检查兑换结果
+            # 查找成功提示
+            success_indicators = [
+                'xpath://div[contains(@class, "ant-message-success")]',
+                'xpath://span[contains(@class, "ant-message-success")]',
+                'xpath://div[contains(text(), "兑换成功")]',
+                'xpath://div[contains(text(), "成功")]'
+            ]
+
+            for indicator in success_indicators:
+                success_msg = driver.ele(indicator, timeout=2)
+                if success_msg:
+                    logging.info(f"兑换码 {code} 兑换成功")
+                    return {'success': True, 'message': f'兑换成功'}
+
+            # 查找错误提示
+            error_indicators = [
+                'xpath://div[contains(@class, "ant-message-error")]',
+                'xpath://span[contains(@class, "ant-message-error")]',
+                'xpath://div[contains(@class, "ant-message-warning")]',
+                'xpath://span[contains(@class, "ant-message-warning")]',
+                'xpath://div[contains(text(), "兑换失败")]',
+                'xpath://div[contains(text(), "已使用")]',
+                'xpath://div[contains(text(), "您已使用过")]',
+                'xpath://div[contains(text(), "cdkey")]',
+                'xpath://div[contains(text(), "无效")]',
+                'xpath://div[contains(text(), "错误")]',
+                'xpath://div[contains(text(), "undefined")]'
+            ]
+
+            for indicator in error_indicators:
+                error_msg = driver.ele(indicator, timeout=2)
+                if error_msg:
+                    error_text = error_msg.text if hasattr(error_msg, 'text') else '兑换失败'
+                    # 处理特殊的错误消息
+                    if "您已使用过" in error_text or "已使用" in error_text:
+                        logging.info(f"兑换码 {code} 已被使用过")
+                        return {'success': False, 'message': f'兑换码已被使用过'}
+                    elif "无效" in error_text:
+                        logging.info(f"兑换码 {code} 无效")
+                        return {'success': False, 'message': f'兑换码无效'}
+                    elif "undefined" in error_text:
+                        # 处理含有undefined的消息，通常是已使用的兑换码
+                        logging.info(f"兑换码 {code} 已被使用（服务器返回异常）")
+                        return {'success': False, 'message': f'兑换码已被使用'}
+                    else:
+                        logging.warning(f"兑换码 {code} 失败: {error_text}")
+                        return {'success': False, 'message': f'兑换失败: {error_text}'}
+
+            # 检查输入框是否被清空（通常兑换成功后会清空）
+            code_input = driver.ele('xpath://input[@placeholder="请输入您的积分兑换码, 点击兑换"]', timeout=2)
+            if code_input:
+                current_value = code_input.attr('value') or ''
+                if current_value == '':
+                    return {'success': True, 'message': f'兑换码 {code} 可能已兑换'}
+
+            return {'success': False, 'message': f'兑换码 {code} 状态未知'}
         else:
             return {'success': False, 'message': '兑换按钮不可用或未找到'}
 
@@ -2850,7 +2976,7 @@ def index():
 @app.route('/api/checkin', methods=['POST'])
 @require_auth
 def api_checkin():
-    """手动触发签到"""
+    """手动触发签到（已弃用，使用 /api/checkin-stream）"""
     try:
         # 获取触发者信息
         trigger_by = session.get('username', 'api')
@@ -2861,6 +2987,109 @@ def api_checkin():
             return jsonify({'success': False, 'message': '签到任务执行失败'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/checkin-stream')
+@require_auth
+def api_checkin_stream():
+    """SSE接口：执行签到任务"""
+    # 在请求上下文中获取session数据
+    trigger_by = session.get('username', 'api')
+
+    def generate():
+        """生成SSE事件流"""
+        try:
+            logging.info(f"开始执行签到任务，触发者: {trigger_by}")
+            yield f"data: {json.dumps({'type': 'info', 'message': '开始执行签到任务...'})}\n\n"
+
+            # 加载配置
+            config = load_config()
+            accounts = config.get('account', [])
+
+            if not accounts:
+                logging.warning("没有配置账号")
+                yield f"data: {json.dumps({'type': 'error', 'message': '没有配置账号'})}\n\n"
+                yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '没有配置账号'})}\n\n"
+                return
+
+            yield f"data: {json.dumps({'type': 'info', 'message': f'共有 {len(accounts)} 个账号需要签到'})}\n\n"
+
+            # 调用主签到函数
+            from main import main as checkin_main
+
+            # 在后台线程执行签到，同时发送进度
+            import threading
+            import queue
+
+            progress_queue = queue.Queue()
+            exception_holder = {'exception': None}
+
+            def run_checkin():
+                try:
+                    # 重定向日志到队列
+                    import io
+                    import sys
+
+                    class QueueHandler(logging.Handler):
+                        def emit(self, record):
+                            msg = self.format(record)
+                            progress_queue.put(('log', msg))
+
+                    # 添加队列处理器
+                    queue_handler = QueueHandler()
+                    queue_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+                    logging.root.addHandler(queue_handler)
+
+                    try:
+                        checkin_main('api', trigger_by)
+                        progress_queue.put(('done', True))
+                    finally:
+                        logging.root.removeHandler(queue_handler)
+
+                except Exception as e:
+                    exception_holder['exception'] = e
+                    progress_queue.put(('error', str(e)))
+
+            # 启动签到线程
+            checkin_thread = threading.Thread(target=run_checkin, daemon=True)
+            checkin_thread.start()
+
+            # 持续读取进度并发送
+            while checkin_thread.is_alive() or not progress_queue.empty():
+                try:
+                    msg_type, msg_content = progress_queue.get(timeout=1)
+
+                    if msg_type == 'log':
+                        # 发送日志消息
+                        yield f"data: {json.dumps({'type': 'info', 'message': msg_content})}\n\n"
+                    elif msg_type == 'done':
+                        logging.info("签到任务完成")
+                        yield f"data: {json.dumps({'type': 'success', 'message': '签到任务已完成'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': '签到完成'})}\n\n"
+                        break
+                    elif msg_type == 'error':
+                        logging.error(f"签到任务出错: {msg_content}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': f'签到出错: {msg_content}'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '签到失败'})}\n\n"
+                        break
+
+                except queue.Empty:
+                    # 发送心跳
+                    yield f"data: {json.dumps({'type': 'ping', 'message': '进行中...'})}\n\n"
+                    continue
+
+            # 等待线程结束
+            checkin_thread.join(timeout=5)
+
+            # 检查是否有异常
+            if exception_holder['exception']:
+                raise exception_holder['exception']
+
+        except Exception as e:
+            logging.error(f"签到任务错误: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': f'签到失败: {str(e)}'})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '签到失败'})}\n\n"
+
+    return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/api/redeem', methods=['POST'])
 @require_auth
@@ -2883,11 +3112,21 @@ def api_redeem():
         results = []
         browser_path = os.getenv('CHROME_PATH', "/usr/bin/google-chrome")
         arguments = [
-            "--incognito",
-            "--lang=zh-CN",
-            "--accept-lang=zh-CN,zh;q=0.9",
-            "--disable-gpu",
-            "--disable-dev-tools"
+            "--incognito",  # 启用隐私模式
+            "-no-first-run",
+            "-force-color-profile=srgb",
+            "-metrics-recording-only",
+            "-password-store=basic",
+            "-use-mock-keychain",
+            "-export-tagged-pdf",
+            "-no-default-browser-check",
+            "-disable-background-mode",
+            "-enable-features=NetworkService,NetworkServiceInProcess,LoadCryptoTokenExtension,PermuteTLSExtensions",
+            "-disable-features=FlashDeprecationWarning,EnablePasswordsAccountStorage",
+            "-deny-permission-prompts",
+            "-disable-gpu",
+            "--lang=zh-CN",  # 设置浏览器语言为中文
+            "--accept-lang=zh-CN,zh;q=0.9",  # 设置接受的语言为中文
         ]
 
         for account in accounts:
@@ -2901,8 +3140,12 @@ def api_redeem():
                 driver = ChromiumPage(addr_or_opts=options)
                 driver.set.window.full()
 
+                # 获取域名配置
+                domain_config = config.get('domains', {})
+                primary_domain = domain_config.get('primary', 'gptgod.online')
+
                 # 登录
-                driver.get('https://gptgod.work/#/login')
+                driver.get(f'https://{primary_domain}/#/login')
                 time.sleep(8)
 
                 # 登录流程（简化版）
@@ -2922,7 +3165,7 @@ def api_redeem():
 
                         # 兑换每个码
                         for code in codes:
-                            result = redeem_code(code, email, driver)
+                            result = redeem_code(code, email, driver, primary_domain)
                             results.append(f"{email}: {code} - {result['message']}")
 
             except Exception as e:
@@ -3121,19 +3364,46 @@ def api_points():
         # 获取统计信息
         stats = history_manager.get_statistics()
 
+        # 获取账号映射
+        conn = sqlite3.connect('accounts_data/gptgod_checkin.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT uid, email FROM account_mapping ORDER BY last_update DESC')
+        accounts = cursor.fetchall()
+        conn.close()
+
+        # 为每个账号获取积分（从统计中获取）
+        accounts_detail = []
+        total_points = stats.get('total_points', 0)
+
+        for uid, email in accounts:
+            account_stats = history_manager.get_statistics(uid=uid)
+            account_points = account_stats.get('total_points', 0)
+
+            accounts_detail.append({
+                'email': email,
+                'points': account_points,
+                'percentage': round((account_points / total_points * 100), 2) if total_points > 0 else 0
+            })
+
+        # 按积分排序
+        accounts_detail.sort(key=lambda x: x['points'], reverse=True)
+
         return jsonify({
             'success': True,
-            'total_points': stats.get('total_points', 0),
+            'total_points': total_points,
             'statistics': {
                 'total_accounts': stats.get('total_accounts', 0),
-                'active_accounts': stats.get('total_accounts', 0)
+                'active_accounts': stats.get('total_accounts', 0),
+                'total_earned': stats.get('total_earned', 0),
+                'total_spent': stats.get('total_spent', 0)
             },
-            'distribution': {},
-            'accounts_detail': {'accounts': []},
-            'top_accounts': [],
-            'last_update': None
+            'distribution': stats.get('by_source', {}),
+            'accounts_detail': {'accounts': accounts_detail},
+            'top_accounts': accounts_detail[:10],
+            'last_update': stats.get('last_record')
         })
     except Exception as e:
+        logging.error(f"获取积分统计失败: {e}", exc_info=True)
         return jsonify({'success': False, 'message': str(e)})
 
 @app.route('/api/points/trend')
@@ -3238,7 +3508,7 @@ def api_points_history_overview():
         all_stats = history_manager.get_statistics()
 
         # 获取账号映射
-        conn = sqlite3.connect('accounts_data/points_history.db')
+        conn = sqlite3.connect('accounts_data/gptgod_checkin.db')
         cursor = conn.cursor()
         cursor.execute('SELECT uid, email FROM account_mapping ORDER BY last_update DESC')
         accounts = [{'uid': row[0], 'email': row[1]} for row in cursor.fetchall()]
@@ -3672,6 +3942,7 @@ def verify_account_stream():
         """生成SSE事件流"""
         try:
             # 发送开始消息
+            logging.info(f"开始验证账号: {email}")
             yield f"data: {json.dumps({'type': 'info', 'message': '开始验证账号...'})}\n\n"
 
             # 检查账号是否已存在
@@ -3679,10 +3950,12 @@ def verify_account_stream():
             existing_accounts = config_manager.get_accounts()
             for account in existing_accounts:
                 if account['mail'] == email:
+                    logging.warning(f"账号 {email} 已存在于系统中")
                     yield f"data: {json.dumps({'type': 'warning', 'message': '账号已存在于系统中'})}\n\n"
                     yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '账号已存在'})}\n\n"
                     return
 
+            logging.info(f"账号 {email} 不存在，继续验证...")
             yield f"data: {json.dumps({'type': 'info', 'message': '账号不存在，继续验证...'})}\n\n"
 
             # 获取配置
@@ -3690,99 +3963,172 @@ def verify_account_stream():
             domain_config = config.get('domains', {})
             primary_domain = domain_config.get('primary', 'gptgod.online')
 
+            logging.info(f"使用域名: {primary_domain}")
             yield f"data: {json.dumps({'type': 'info', 'message': f'使用域名: {primary_domain}'})}\n\n"
 
-            # 创建浏览器实例
-            yield f"data: {json.dumps({'type': 'info', 'message': '启动浏览器...'})}\n\n"
+            # 创建浏览器实例（无痕模式 + 临时数据目录）
+            logging.info("准备启动无痕浏览器...")
+            yield f"data: {json.dumps({'type': 'info', 'message': '启动无痕浏览器...'})}\n\n"
 
-            browser_config = config.get('browser', {})
-            browser_path = browser_config.get('path', "/usr/bin/google-chrome")
-            arguments = browser_config.get('arguments', [
+            # 创建临时数据目录
+            import tempfile
+            import shutil
+            import random
+
+            temp_dir = tempfile.mkdtemp(prefix='gptgod_verify_')
+            random_port = random.randint(9222, 9999)
+
+            logging.info(f"创建临时目录: {temp_dir}")
+            logging.info(f"使用随机端口: {random_port}")
+            yield f"data: {json.dumps({'type': 'info', 'message': f'创建临时目录: {temp_dir}'})}\n\n"
+            yield f"data: {json.dumps({'type': 'info', 'message': f'使用随机端口: {random_port}'})}\n\n"
+
+            # 使用环境变量或默认Edge路径
+            browser_path = os.getenv('CHROME_PATH', r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
+            logging.info(f"使用浏览器路径: {browser_path}")
+            arguments = [
+                "--incognito",
+                f"--user-data-dir={temp_dir}",  # 使用临时数据目录
+                f"--remote-debugging-port={random_port}",  # 使用随机端口
                 "--disable-blink-features=AutomationControlled",
-                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
                 "--window-size=1920,1080",
                 "--disable-gpu",
-                "--no-sandbox",
-                "--disable-dev-shm-usage"
-            ])
+                "--disable-dev-shm-usage",
+                "--lang=zh-CN",
+                "--accept-lang=zh-CN,zh;q=0.9",
+                "--disable-extensions",  # 禁用扩展
+                "--no-first-run",  # 不显示首次运行页面
+                "--disable-background-networking",  # 禁用后台网络
+            ]
 
             options = get_chromium_options(browser_path, arguments)
-            driver = ChromiumPage(addr_or_opts=options)
+            driver = None
 
-            yield f"data: {json.dumps({'type': 'info', 'message': '浏览器启动成功'})}\n\n"
+            try:
+                driver = ChromiumPage(addr_or_opts=options)
 
-            # 访问登录页面
-            yield f"data: {json.dumps({'type': 'info', 'message': '访问登录页面...'})}\n\n"
-            driver.get(f'https://{primary_domain}/#/login')
-            time.sleep(3)
+                logging.info("浏览器启动成功")
+                yield f"data: {json.dumps({'type': 'info', 'message': '浏览器启动成功'})}\n\n"
 
-            # 输入账号密码
-            yield f"data: {json.dumps({'type': 'info', 'message': '输入账号信息...'})}\n\n"
-            email_input = driver.ele('xpath://input[@placeholder="请输入邮箱"]', timeout=10)
-            password_input = driver.ele('xpath://input[@type="password"]', timeout=10)
-
-            if not email_input or not password_input:
-                yield f"data: {json.dumps({'type': 'error', 'message': '无法找到登录表单'})}\n\n"
-                yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '页面加载失败'})}\n\n"
-                driver.quit()
-                return
-
-            email_input.clear()
-            email_input.input(email)
-            password_input.clear()
-            password_input.input(password)
-
-            # 点击登录
-            yield f"data: {json.dumps({'type': 'info', 'message': '尝试登录...'})}\n\n"
-            login_button = driver.ele('xpath://button[contains(@class, "ant-btn-primary")]', timeout=5)
-            if login_button:
-                login_button.click()
-                time.sleep(5)
-
-            # 检查登录结果
-            yield f"data: {json.dumps({'type': 'info', 'message': '检查登录结果...'})}\n\n"
-
-            # 检查是否有错误提示
-            error_msg = driver.ele('xpath://div[contains(@class, "ant-message-error")]', timeout=2)
-            if error_msg:
-                yield f"data: {json.dumps({'type': 'error', 'message': '登录失败：账号或密码错误'})}\n\n"
-                yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '账号验证失败'})}\n\n"
-                driver.quit()
-                return
-
-            # 检查是否成功进入主页
-            success_indicator = driver.ele('xpath://div[contains(text(), "今日签到")]', timeout=10)
-            if not success_indicator:
-                # 可能需要处理Cloudflare验证
-                yield f"data: {json.dumps({'type': 'warning', 'message': '可能需要处理验证码...'})}\n\n"
-                cf_bypasser = CloudflareBypasser(driver, max_retries=3)
-                cf_bypasser.bypass()
+                # 访问登录页面
+                logging.info(f"访问登录页面: https://{primary_domain}/#/login")
+                yield f"data: {json.dumps({'type': 'info', 'message': '访问登录页面...'})}\n\n"
+                driver.get(f'https://{primary_domain}/#/login')
                 time.sleep(3)
 
-                success_indicator = driver.ele('xpath://div[contains(text(), "今日签到")]', timeout=10)
+                # 输入账号密码
+                logging.info("查找登录表单元素...")
+                yield f"data: {json.dumps({'type': 'info', 'message': '输入账号信息...'})}\n\n"
+                email_input = driver.ele('xpath://input[@placeholder="请输入邮箱"]', timeout=10)
+                password_input = driver.ele('xpath://input[@type="password"]', timeout=10)
 
-            if success_indicator:
-                yield f"data: {json.dumps({'type': 'success', 'message': '登录成功！'})}\n\n"
+                if not email_input or not password_input:
+                    logging.error("无法找到登录表单")
+                    yield f"data: {json.dumps({'type': 'error', 'message': '无法找到登录表单'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '页面加载失败'})}\n\n"
+                    return
+
+                logging.info("输入账号密码...")
+                email_input.clear()
+                email_input.input(email)
+                password_input.clear()
+                password_input.input(password)
+
+                # 点击登录
+                logging.info("查找登录按钮...")
+                yield f"data: {json.dumps({'type': 'info', 'message': '尝试登录...'})}\n\n"
+                login_button = driver.ele('xpath://button[contains(@class, "ant-btn-primary")]', timeout=5)
+                if login_button:
+                    logging.info("点击登录按钮")
+                    login_button.click()
+                    time.sleep(8)
+
+                # 检查登录结果
+                logging.info("检查登录结果...")
+                yield f"data: {json.dumps({'type': 'info', 'message': '检查登录结果...'})}\n\n"
+
+                # 方法1：检查是否有错误提示消息
+                error_indicators = [
+                    'xpath://div[contains(@class, "ant-message-error")]',
+                    'xpath://div[contains(@class, "ant-notification-notice-error")]',
+                    'xpath://div[contains(text(), "密码错误")]',
+                    'xpath://div[contains(text(), "账号不存在")]',
+                    'xpath://div[contains(text(), "登录失败")]',
+                    'xpath://span[contains(text(), "密码错误")]',
+                    'xpath://span[contains(text(), "账号不存在")]'
+                ]
+
+                for indicator in error_indicators:
+                    error_msg = driver.ele(indicator, timeout=2)
+                    if error_msg:
+                        error_text = error_msg.text if hasattr(error_msg, 'text') else '登录失败'
+                        logging.error(f"登录失败 - {email}: {error_text}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': f'登录失败：{error_text}'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '账号或密码错误'})}\n\n"
+                        return
+
+                # 方法2：检查是否仍在登录页面（密码错误时通常不会跳转）
+                current_url = driver.url
+                logging.info(f"登录后当前URL: {current_url}")
+                if '#/login' in current_url or '/login' in current_url:
+                    # 仍在登录页面，登录一定失败
+                    logging.error(f"登录失败 - {email}: 仍在登录页面")
+                    yield f"data: {json.dumps({'type': 'error', 'message': '登录后仍在登录页面，账号或密码错误'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '账号或密码错误'})}\n\n"
+                    return
+
+                # 登录成功（已跳转到其他页面）
+                logging.info(f"登录成功 - {email}: 已跳转到 {current_url}")
+                yield f"data: {json.dumps({'type': 'success', 'message': '已成功跳转离开登录页面'})}\n\n"
+                yield f"data: {json.dumps({'type': 'success', 'message': '账号验证成功！'})}\n\n"
 
                 # 保存账号到数据库
+                logging.info(f"保存账号到数据库: {email}")
                 yield f"data: {json.dumps({'type': 'info', 'message': '保存账号信息...'})}\n\n"
                 config_manager.add_account(email, password)
 
+                logging.info(f"账号添加成功: {email}")
                 yield f"data: {json.dumps({'type': 'success', 'message': '账号已成功添加到系统'})}\n\n"
                 yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': '账号添加成功'})}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'error', 'message': '无法验证账号有效性'})}\n\n"
-                yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '账号验证失败'})}\n\n"
 
-            driver.quit()
+            finally:
+                # 清理资源
+                if driver:
+                    try:
+                        logging.info("关闭浏览器...")
+                        driver.quit()
+                        yield f"data: {json.dumps({'type': 'info', 'message': '浏览器已关闭'})}\n\n"
+                    except:
+                        pass
+
+                # 删除临时目录
+                try:
+                    if os.path.exists(temp_dir):
+                        logging.info(f"删除临时目录: {temp_dir}")
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        yield f"data: {json.dumps({'type': 'info', 'message': '临时目录已清理'})}\n\n"
+                except Exception as e:
+                    logging.warning(f"清理临时目录失败: {e}")
 
         except Exception as e:
-            logging.error(f"账号验证错误: {e}")
+            logging.error(f"账号验证错误 - {email}: {e}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': f'验证过程出错: {str(e)}'})}\n\n"
             yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '验证失败'})}\n\n"
 
+            # 清理资源
             try:
-                driver.quit()
+                if 'driver' in locals() and driver:
+                    logging.info("异常处理：关闭浏览器")
+                    driver.quit()
+            except:
+                pass
+
+            # 清理临时目录
+            try:
+                if 'temp_dir' in locals() and os.path.exists(temp_dir):
+                    logging.info(f"异常处理：删除临时目录 {temp_dir}")
+                    import shutil
+                    shutil.rmtree(temp_dir, ignore_errors=True)
             except:
                 pass
 
