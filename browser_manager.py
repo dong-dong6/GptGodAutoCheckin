@@ -17,12 +17,6 @@ def find_browser_path():
     Returns:
         str: 浏览器可执行文件路径
     """
-    # 优先使用环境变量
-    env_path = os.getenv('CHROME_PATH')
-    if env_path and os.path.exists(env_path):
-        logging.info(f"使用环境变量指定的浏览器: {env_path}")
-        return env_path
-
     system = platform.system()
 
     if system == "Windows":
@@ -60,10 +54,12 @@ def find_browser_path():
             logging.info(f"自动检测到浏览器: {path}")
             return path
 
-    # 如果都找不到，返回默认路径并警告
-    default_path = possible_paths[0] if possible_paths else "chrome"
-    logging.warning(f"未找到浏览器，使用默认路径: {default_path}")
-    return default_path
+    # 如果都找不到，抛出异常
+    raise FileNotFoundError(
+        f"未找到浏览器！请安装以下浏览器之一：\n"
+        f"{'、'.join(['Microsoft Edge', 'Google Chrome', 'Brave Browser'])}\n"
+        f"已检查路径：\n" + "\n".join(f"  - {p}" for p in possible_paths)
+    )
 
 
 class BrowserManager:
