@@ -171,4 +171,9 @@ claude/
 # Database files
 *.db
 accounts_data/*.db
+
+# Sensitive data files - DO NOT COMMIT
 points_history_export.json
+accounts_data/*.json
+accounts_data/latest_snapshot.json
+accounts_data/points_history.json
