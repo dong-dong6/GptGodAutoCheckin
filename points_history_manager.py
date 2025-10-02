@@ -411,17 +411,3 @@ class PointsHistoryManager:
 
 
 # 使用示例
-if __name__ == '__main__':
-    manager = PointsHistoryManager()
-
-    # 获取统计
-    stats = manager.get_statistics()
-    print(f"总统计: {stats}")
-
-    # 获取每日汇总
-    daily = manager.get_daily_summary(days=7)
-    for day in daily:
-        print(f"{day['date']}: {day['points']} 积分")
-
-    # 导出数据
-    manager.export_to_json()

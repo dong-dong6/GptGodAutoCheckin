@@ -348,17 +348,3 @@ class CheckinLoggerDB:
 
 
 # 使用示例
-if __name__ == '__main__':
-    logger = CheckinLoggerDB()
-
-    # 迁移现有JSON日志
-    logger.migrate_from_json_logs('checkin_logs')
-
-    # 测试新功能
-    session_id = logger.log_checkin_start('manual', 'admin')
-    logger.log_account_result(session_id, 'test@example.com', 'success', '签到成功', 2000)
-    logger.log_checkin_end(session_id, email_sent=True)
-
-    # 获取统计
-    stats = logger.get_statistics()
-    print(json.dumps(stats, indent=2, ensure_ascii=False))

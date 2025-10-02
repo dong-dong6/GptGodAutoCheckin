@@ -270,16 +270,3 @@ class ConfigManager:
 
 
 # 使用示例
-if __name__ == '__main__':
-    config_manager = ConfigManager()
-
-    # 从YAML迁移配置
-    if config_manager.migrate_from_yaml('account.yml'):
-        print("配置迁移成功")
-
-        # 获取所有配置
-        all_config = config_manager.get_all_config()
-        print("迁移后的配置:")
-        print(json.dumps(all_config, indent=2, ensure_ascii=False))
-    else:
-        print("配置迁移失败")
