@@ -69,16 +69,13 @@ class CloudflareBypasser:
             self.log_message(f"Error clicking verification button: {e}")
 
     def is_bypassed(self):
-        temp =  self.driver.ele("text=今天已签到")
+        temp = self.driver.ele("text=今天已签到")
         try:
             temp.value
             return True
         except Exception as e:
             return False
-        # if temp is None:
-        #     return False
-        # else:
-        #     return True
+
     def bypass(self):
 
         try_count = 0

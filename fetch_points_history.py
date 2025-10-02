@@ -190,8 +190,9 @@ def fetch_all_history(email, password, domain='gptgod.online'):
 
     try:
         # 创建浏览器实例
-        browser_path = "/usr/bin/google-chrome"
+        browser_path = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
         arguments = [
+            "--incognito",  # 添加无痕模式
             "--lang=zh-CN",
             "--accept-lang=zh-CN,zh;q=0.9",
             "--disable-gpu",

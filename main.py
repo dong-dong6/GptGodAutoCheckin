@@ -548,7 +548,7 @@ def main(trigger_type='manual', trigger_by=None):
     data_manager = None
 
     # 浏览器配置
-    browser_path = os.getenv('CHROME_PATH', "/usr/bin/google-chrome")
+    browser_path = os.getenv('CHROME_PATH', r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
     arguments = [
         "--incognito",  # 启用隐私模式
         "-no-first-run",
@@ -565,7 +565,6 @@ def main(trigger_type='manual', trigger_by=None):
         "-disable-gpu",
         "--lang=zh-CN",  # 设置浏览器语言为中文
         "--accept-lang=zh-CN,zh;q=0.9",  # 设置接受的语言为中文
-        "--disable-dev-tools"
     ]
 
     options = get_chromium_options(browser_path, arguments)
