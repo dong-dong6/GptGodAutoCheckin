@@ -1,4 +1,8 @@
-DrissionPage==4.0.5.6
+# 浏览器自动化框架
+DrissionPage==4.0.5.6  # 原有框架（备用）
+pydoll-python>=2.8.0   # 新框架，支持内置Cloudflare绕过
+
+# 其他依赖
 PyYAML>=6.0
 schedule>=1.2.0
 pyvirtualdisplay>=3.0
