@@ -307,8 +307,10 @@ def perform_checkin(driver, email, domain, logger_info, data_manager):
             'current_points': 0
         }
 
-def process_account_with_retry(account, options, domains, logger_info, data_manager):
+def process_account_with_retry(account, domains, logger_info, data_manager):
     """处理单个账号签到，支持域名切换重试"""
+    from browser_manager import BrowserManager
+
     # 解析日志记录器信息
     use_db_logger = logger_info.get('use_db_logger', False)
     if use_db_logger:
@@ -324,10 +326,12 @@ def process_account_with_retry(account, options, domains, logger_info, data_mana
     for domain in domains:
         logging.info(f"\n{'='*50}")
         logging.info(f"尝试使用域名: {domain} - 账号: {email}")
-        driver = None
+
+        # 使用浏览器管理器创建浏览器实例
+        browser_mgr = BrowserManager(headless=False)
 
         try:
-            driver = ChromiumPage(addr_or_opts=options)
+            driver = browser_mgr.create_browser(incognito=True)
             driver.set.window.full()
 
             # 访问登录页面
@@ -472,13 +476,9 @@ def process_account_with_retry(account, options, domains, logger_info, data_mana
                     'domain': domain
                 }
         finally:
-            if driver:
-                try:
-                    logging.info("关闭浏览器/Closing the browser.")
-                    driver.quit()
-                except:
-                    pass
-                time.sleep(3)
+            # 使用浏览器管理器清理资源
+            browser_mgr.close()
+            time.sleep(3)
 
     # 所有域名都失败
     if use_db_logger:
@@ -547,28 +547,6 @@ def main(trigger_type='manual', trigger_by=None):
     # 初始化数据管理器
     data_manager = None
 
-    # 浏览器配置
-    browser_path = os.getenv('CHROME_PATH', r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
-    arguments = [
-        "--incognito",  # 启用隐私模式
-        "-no-first-run",
-        "-force-color-profile=srgb",
-        "-metrics-recording-only",
-        "-password-store=basic",
-        "-use-mock-keychain",
-        "-export-tagged-pdf",
-        "-no-default-browser-check",
-        "-disable-background-mode",
-        "-enable-features=NetworkService,NetworkServiceInProcess,LoadCryptoTokenExtension,PermuteTLSExtensions",
-        "-disable-features=FlashDeprecationWarning,EnablePasswordsAccountStorage",
-        "-deny-permission-prompts",
-        "-disable-gpu",
-        "--lang=zh-CN",  # 设置浏览器语言为中文
-        "--accept-lang=zh-CN,zh;q=0.9",  # 设置接受的语言为中文
-    ]
-
-    options = get_chromium_options(browser_path, arguments)
-
     # 汇总结果
     all_results = []
     success_count = 0
@@ -591,7 +569,7 @@ def main(trigger_type='manual', trigger_by=None):
                 'log_idx': log_idx
             }
 
-        result = process_account_with_retry(account, options, domains, logger_info, data_manager)
+        result = process_account_with_retry(account, domains, logger_info, data_manager)
         all_results.append(result)
 
         if result['success']:

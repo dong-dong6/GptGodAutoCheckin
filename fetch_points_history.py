@@ -186,21 +186,13 @@ def fetch_all_history(email, password, domain='gptgod.online'):
         list: 所有历史记录
     """
     all_records = []
-    driver = None
+
+    # 使用浏览器管理器
+    from browser_manager import BrowserManager
+    browser_mgr = BrowserManager(headless=False)
 
     try:
-        # 创建浏览器实例
-        browser_path = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-        arguments = [
-            "--incognito",  # 添加无痕模式
-            "--lang=zh-CN",
-            "--accept-lang=zh-CN,zh;q=0.9",
-            "--disable-gpu",
-            "--disable-dev-tools"
-        ]
-
-        options = get_chromium_options(browser_path, arguments)
-        driver = ChromiumPage(addr_or_opts=options)
+        driver = browser_mgr.create_browser(incognito=True)
         driver.set.window.max()
 
         # 登录
@@ -420,8 +412,8 @@ def fetch_all_history(email, password, domain='gptgod.online'):
     except Exception as e:
         logging.error(f"获取历史记录失败: {e}")
     finally:
-        if driver:
-            driver.quit()
+        # 使用浏览器管理器清理资源
+        browser_mgr.close()
 
     return all_records
 

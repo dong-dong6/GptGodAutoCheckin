@@ -13,7 +13,7 @@ import schedule
 import yaml
 from CloudflareBypasser import CloudflareBypasser
 from DrissionPage import ChromiumPage, ChromiumOptions
-from main import send_email_notification, get_chromium_options, load_config
+from main import send_email_notification, load_config
 from checkin_logger_db import CheckinLoggerDB
 from points_history_manager import PointsHistoryManager
 from config_manager import ConfigManager
@@ -3110,34 +3110,19 @@ def api_redeem():
             accounts = [acc for acc in accounts if acc['mail'] == account_filter]
 
         results = []
-        browser_path = os.getenv('CHROME_PATH', "/usr/bin/google-chrome")
-        arguments = [
-            "--incognito",  # 启用隐私模式
-            "-no-first-run",
-            "-force-color-profile=srgb",
-            "-metrics-recording-only",
-            "-password-store=basic",
-            "-use-mock-keychain",
-            "-export-tagged-pdf",
-            "-no-default-browser-check",
-            "-disable-background-mode",
-            "-enable-features=NetworkService,NetworkServiceInProcess,LoadCryptoTokenExtension,PermuteTLSExtensions",
-            "-disable-features=FlashDeprecationWarning,EnablePasswordsAccountStorage",
-            "-deny-permission-prompts",
-            "-disable-gpu",
-            "--lang=zh-CN",  # 设置浏览器语言为中文
-            "--accept-lang=zh-CN,zh;q=0.9",  # 设置接受的语言为中文
-        ]
 
         for account in accounts:
+            from browser_manager import BrowserManager
+
             email = account['mail']
             password = account['password']
 
-            driver = None
+            # 使用浏览器管理器
+            browser_mgr = BrowserManager(headless=False)
+
             try:
                 # 创建浏览器实例
-                options = get_chromium_options(browser_path, arguments)
-                driver = ChromiumPage(addr_or_opts=options)
+                driver = browser_mgr.create_browser(incognito=True)
                 driver.set.window.full()
 
                 # 获取域名配置
@@ -3171,8 +3156,8 @@ def api_redeem():
             except Exception as e:
                 results.append(f"{email}: 兑换失败 - {str(e)}")
             finally:
-                if driver:
-                    driver.quit()
+                # 使用浏览器管理器清理资源
+                browser_mgr.close()
 
         task_status['last_redeem'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         task_status['redeem_results'] = results
@@ -3967,47 +3952,19 @@ def verify_account_stream():
             yield f"data: {json.dumps({'type': 'info', 'message': f'使用域名: {primary_domain}'})}\n\n"
 
             # 创建浏览器实例（无痕模式 + 临时数据目录）
+            from browser_manager import BrowserManager
+
             logging.info("准备启动无痕浏览器...")
             yield f"data: {json.dumps({'type': 'info', 'message': '启动无痕浏览器...'})}\n\n"
 
-            # 创建临时数据目录
-            import tempfile
-            import shutil
-            import random
-
-            temp_dir = tempfile.mkdtemp(prefix='gptgod_verify_')
-            random_port = random.randint(9222, 9999)
-
-            logging.info(f"创建临时目录: {temp_dir}")
-            logging.info(f"使用随机端口: {random_port}")
-            yield f"data: {json.dumps({'type': 'info', 'message': f'创建临时目录: {temp_dir}'})}\n\n"
-            yield f"data: {json.dumps({'type': 'info', 'message': f'使用随机端口: {random_port}'})}\n\n"
-
-            # 使用环境变量或默认Edge路径
-            browser_path = os.getenv('CHROME_PATH', r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
-            logging.info(f"使用浏览器路径: {browser_path}")
-            arguments = [
-                "--incognito",
-                f"--user-data-dir={temp_dir}",  # 使用临时数据目录
-                f"--remote-debugging-port={random_port}",  # 使用随机端口
-                "--disable-blink-features=AutomationControlled",
-                "--window-size=1920,1080",
-                "--disable-gpu",
-                "--disable-dev-shm-usage",
-                "--lang=zh-CN",
-                "--accept-lang=zh-CN,zh;q=0.9",
-                "--disable-extensions",  # 禁用扩展
-                "--no-first-run",  # 不显示首次运行页面
-                "--disable-background-networking",  # 禁用后台网络
-            ]
-
-            options = get_chromium_options(browser_path, arguments)
-            driver = None
+            # 使用浏览器管理器
+            browser_mgr = BrowserManager(headless=False)
 
             try:
-                driver = ChromiumPage(addr_or_opts=options)
+                driver = browser_mgr.create_browser(incognito=True)
 
-                logging.info("浏览器启动成功")
+                logging.info(f"浏览器启动成功，临时目录: {browser_mgr.temp_dir}")
+                logging.info(f"使用随机端口: {browser_mgr.random_port}")
                 yield f"data: {json.dumps({'type': 'info', 'message': '浏览器启动成功'})}\n\n"
 
                 # 访问登录页面
@@ -4092,23 +4049,10 @@ def verify_account_stream():
                 yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': '账号添加成功'})}\n\n"
 
             finally:
-                # 清理资源
-                if driver:
-                    try:
-                        logging.info("关闭浏览器...")
-                        driver.quit()
-                        yield f"data: {json.dumps({'type': 'info', 'message': '浏览器已关闭'})}\n\n"
-                    except:
-                        pass
-
-                # 删除临时目录
-                try:
-                    if os.path.exists(temp_dir):
-                        logging.info(f"删除临时目录: {temp_dir}")
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        yield f"data: {json.dumps({'type': 'info', 'message': '临时目录已清理'})}\n\n"
-                except Exception as e:
-                    logging.warning(f"清理临时目录失败: {e}")
+                # 使用浏览器管理器清理资源
+                logging.info("清理浏览器资源...")
+                browser_mgr.close()
+                yield f"data: {json.dumps({'type': 'info', 'message': '资源清理完成'})}\n\n"
 
         except Exception as e:
             logging.error(f"账号验证错误 - {email}: {e}", exc_info=True)
@@ -4117,18 +4061,8 @@ def verify_account_stream():
 
             # 清理资源
             try:
-                if 'driver' in locals() and driver:
-                    logging.info("异常处理：关闭浏览器")
-                    driver.quit()
-            except:
-                pass
-
-            # 清理临时目录
-            try:
-                if 'temp_dir' in locals() and os.path.exists(temp_dir):
-                    logging.info(f"异常处理：删除临时目录 {temp_dir}")
-                    import shutil
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                if 'browser_mgr' in locals():
+                    browser_mgr.close()
             except:
                 pass
 
