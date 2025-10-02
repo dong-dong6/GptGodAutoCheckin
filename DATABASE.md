@@ -174,7 +174,6 @@ CREATE TABLE account_mapping (
 - `update_domain_config(primary, backup, auto_switch)`: 更新域名配置
 - `get_smtp_config()`: 获取SMTP配置
 - `update_smtp_config(...)`: 更新SMTP配置
-- `migrate_from_yaml(yaml_file)`: 从YAML文件迁移配置
 
 ### CheckinLoggerDB (checkin_logger_db.py)
 
@@ -186,7 +185,6 @@ CREATE TABLE account_mapping (
 - `log_checkin_end(session_id, email_sent)`: 结束签到会话
 - `get_recent_sessions(limit)`: 获取最近的签到会话
 - `get_statistics()`: 获取统计信息
-- `migrate_from_json_logs(log_dir)`: 从JSON日志迁移数据
 
 ### PointsHistoryManager (points_history_manager.py)
 
@@ -200,30 +198,6 @@ CREATE TABLE account_mapping (
 - `get_daily_summary(email, uid, days)`: 获取每日汇总
 - `export_to_json(filename)`: 导出为JSON
 - `record_exists(record_id)`: 检查记录是否存在
-
-## 数据迁移
-
-### 从YAML迁移配置
-
-首次运行时，系统会自动从 `account.yml` 迁移配置到数据库：
-
-```python
-from config_manager import ConfigManager
-
-config_manager = ConfigManager()
-config_manager.migrate_from_yaml('account.yml')
-```
-
-### 从JSON迁移日志
-
-将旧的JSON日志迁移到数据库：
-
-```python
-from checkin_logger_db import CheckinLoggerDB
-
-logger = CheckinLoggerDB()
-logger.migrate_from_json_logs('checkin_logs')
-```
 
 ## 数据备份
 

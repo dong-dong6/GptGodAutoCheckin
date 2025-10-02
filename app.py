@@ -1470,7 +1470,6 @@ receiver2@example.com"></textarea>
                             <div id="config-manage-settings" class="settings-content">
                                 <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                                     <button class="btn btn-secondary" onclick="exportConfig()">导出配置</button>
-                                    <button class="btn btn-secondary" onclick="migrateConfig()">迁移配置</button>
                                     <button class="btn btn-danger" onclick="resetConfig()">重置配置</button>
                                 </div>
                                 <div id="config-manage-result"></div>
@@ -2497,30 +2496,6 @@ receiver2@example.com"></textarea>
             }
         }
 
-        async function migrateConfig() {
-            if (!confirm('确认从YAML文件重新迁移配置？这将覆盖当前数据库配置。')) return;
-
-            try {
-                const response = await fetch('/api/config/migrate', { method: 'POST' });
-                const data = await response.json();
-
-                if (data.success) {
-                    showMessage('config-manage-result', '配置迁移成功', 'success');
-                    // 重新加载所有配置
-                    setTimeout(() => {
-                        loadSchedule();
-                        loadDomains();
-                        loadSmtp();
-                        loadAccounts();
-                    }, 1000);
-                } else {
-                    showMessage('config-manage-result', data.message, 'error');
-                }
-            } catch (error) {
-                showMessage('config-manage-result', '迁移失败: ' + error.message, 'error');
-            }
-        }
-
         async function resetConfig() {
             if (!confirm('确认重置所有配置？这将删除所有数据库配置并恢复默认值。')) return;
 
@@ -2924,19 +2899,6 @@ def api_config_export():
         config_manager = ConfigManager()
         config = config_manager.get_all_config()
         return jsonify(config)
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)})
-
-@app.route('/api/config/migrate', methods=['POST'])
-@require_auth
-def api_config_migrate():
-    """迁移配置"""
-    try:
-        config_manager = ConfigManager()
-        if config_manager.migrate_from_yaml('account.yml'):
-            return jsonify({'success': True, 'message': '配置迁移成功'})
-        else:
-            return jsonify({'success': False, 'message': '配置迁移失败'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 

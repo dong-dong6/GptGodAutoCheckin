@@ -60,34 +60,14 @@ python app.py
 
 访问 `http://localhost:8739/add-account` 添加账号
 
-**方式二：通过YAML配置文件**
+**方式二：直接使用Web界面配置**
 
-创建 `account.yml` 文件：
+启动服务后，通过Web界面进行所有配置：
+- 添加账号
+- 设置定时任务
+- 配置域名和邮件通知
 
-```yaml
-account:
-  - mail: your-email@example.com
-    password: your-password
-
-domains:
-  primary: gptgod.online
-  backup: gptgod.work
-  auto_switch: true
-
-schedule:
-  enabled: true
-  times:
-    - "09:00"
-    - "21:00"
-
-web_auth:
-  enabled: true
-  username: admin
-  password: admin123
-  api_token: your-random-token
-```
-
-系统会自动迁移配置到数据库。
+无需创建任何配置文件。
 
 ## 📖 使用方法
 
