@@ -2404,9 +2404,19 @@ receiver2@example.com"></textarea>
                     if (data.accounts.length > 0) {
                         data.accounts.forEach((account, index) => {
                             const email = account.mail || account.email || '未知邮箱';
+                            const sendEmail = account.send_email_notification || false;
+
                             html += `<div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px;">`;
-                            html += `<span><strong>${email}</strong></span>`;
+                            html += `<div style="flex: 1;">`;
+                            html += `<strong>${email}</strong>`;
+                            html += `</div>`;
+                            html += `<div style="display: flex; align-items: center; gap: 12px;">`;
+                            html += `<label class="checkbox-label" style="margin: 0;">`;
+                            html += `<input type="checkbox" ${sendEmail ? 'checked' : ''} onchange="toggleEmailNotification('${email}', this.checked)">`;
+                            html += `<span style="font-size: 13px;">发送签到通知</span>`;
+                            html += `</label>`;
                             html += `<button class="btn btn-danger btn-small" onclick="removeAccount('${email}')">删除</button>`;
+                            html += `</div>`;
                             html += `</div>`;
                         });
                     } else {
@@ -2471,6 +2481,34 @@ receiver2@example.com"></textarea>
                 }
             } catch (error) {
                 showMessage('accounts-result', '删除失败: ' + error.message, 'error');
+            }
+        }
+
+        async function toggleEmailNotification(email, sendNotification) {
+            try {
+                const response = await fetch('/api/config/accounts/email-notification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: email,
+                        send_notification: sendNotification
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    const status = sendNotification ? '已启用' : '已禁用';
+                    showMessage('accounts-result', `${email} ${status}邮件通知`, 'success');
+                    setTimeout(() => {
+                        document.getElementById('accounts-result').innerHTML = '';
+                    }, 2000);
+                } else {
+                    showMessage('accounts-result', data.message, 'error');
+                    loadAccounts(); // 失败时重新加载以恢复复选框状态
+                }
+            } catch (error) {
+                showMessage('accounts-result', '更新失败: ' + error.message, 'error');
+                loadAccounts(); // 失败时重新加载以恢复复选框状态
             }
         }
 
@@ -2888,6 +2926,26 @@ def api_config_accounts_remove():
         config_manager = ConfigManager()
         config_manager.remove_account(email)
         return jsonify({'success': True, 'message': f'账号 {email} 删除成功'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/config/accounts/email-notification', methods=['POST'])
+@require_auth
+def api_config_accounts_email_notification():
+    """更新账号邮件通知设置"""
+    try:
+        data = request.json
+        email = data.get('email')
+        send_notification = data.get('send_notification', False)
+
+        if not email:
+            return jsonify({'success': False, 'message': '请提供账号邮箱'})
+
+        config_manager = ConfigManager()
+        config_manager.update_account_email_notification(email, send_notification)
+
+        status = '启用' if send_notification else '禁用'
+        return jsonify({'success': True, 'message': f'账号 {email} 已{status}邮件通知'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 

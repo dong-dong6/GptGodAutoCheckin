@@ -193,6 +193,7 @@ class UnifiedDatabaseManager:
                     email TEXT UNIQUE NOT NULL,
                     password TEXT NOT NULL,
                     enabled BOOLEAN NOT NULL DEFAULT 1,
+                    send_email_notification BOOLEAN NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL DEFAULT (datetime('now')),
                     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
                 )

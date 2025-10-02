@@ -110,14 +110,15 @@ class ConfigManager:
     def get_accounts(self):
         """获取账号列表"""
         results = self.db.execute(
-            'SELECT email, password FROM account_config WHERE enabled = 1'
+            'SELECT email, password, send_email_notification FROM account_config WHERE enabled = 1'
         )
 
         accounts = []
         for result in results:
             accounts.append({
                 'mail': result[0],
-                'password': result[1]
+                'password': result[1],
+                'send_email_notification': bool(result[2])
             })
 
         return accounts
@@ -180,6 +181,19 @@ class ConfigManager:
     def enable_account(self, email):
         """启用账号"""
         self.db.execute('UPDATE account_config SET enabled = 1 WHERE email = ?', (email,))
+
+    def update_account_email_notification(self, email, send_notification):
+        """更新账号邮件通知设置
+
+        Args:
+            email: 账号邮箱
+            send_notification: 是否发送邮件通知 (True/False)
+        """
+        self.db.execute('''
+            UPDATE account_config
+            SET send_email_notification = ?, updated_at = datetime('now')
+            WHERE email = ?
+        ''', (send_notification, email))
 
 
 # 使用示例
