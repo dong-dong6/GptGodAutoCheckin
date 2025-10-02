@@ -281,7 +281,8 @@ class PointsHistoryManager:
                 'by_source': source_stats,
                 # 兼容旧字段名
                 'total_records': result[0] or 0,
-                'total_points': result[3] or 0
+                'total_points': result[3] or 0,
+                'earned_sources': source_stats  # 兼容前端期待的字段名
             }
 
     def get_daily_summary(self, days=30, email=None, uid=None):
@@ -314,8 +315,10 @@ class PointsHistoryManager:
                 cursor.execute(f'''
                     SELECT
                         DATE(create_time) as date,
-                        SUM(tokens) as daily_points,
-                        COUNT(*) as records_count
+                        SUM(CASE WHEN tokens > 0 THEN tokens ELSE 0 END) as earned,
+                        SUM(CASE WHEN tokens < 0 THEN -tokens ELSE 0 END) as spent,
+                        SUM(tokens) as net,
+                        COUNT(*) as transactions
                     FROM points_history
                     {where_clause}
                     GROUP BY DATE(create_time)
@@ -325,8 +328,10 @@ class PointsHistoryManager:
                 cursor.execute(f'''
                     SELECT
                         DATE(create_time) as date,
-                        SUM(tokens) as daily_points,
-                        COUNT(*) as records_count,
+                        SUM(CASE WHEN tokens > 0 THEN tokens ELSE 0 END) as earned,
+                        SUM(CASE WHEN tokens < 0 THEN -tokens ELSE 0 END) as spent,
+                        SUM(tokens) as net,
+                        COUNT(*) as transactions,
                         COUNT(DISTINCT email) as accounts_count
                     FROM points_history
                     {where_clause}
@@ -340,8 +345,10 @@ class PointsHistoryManager:
                 return [
                     {
                         'date': row[0],
-                        'points': row[1],
-                        'records': row[2]
+                        'earned': row[1] or 0,
+                        'spent': row[2] or 0,
+                        'net': row[3] or 0,
+                        'transactions': row[4]
                     }
                     for row in results
                 ]
@@ -349,9 +356,11 @@ class PointsHistoryManager:
                 return [
                     {
                         'date': row[0],
-                        'points': row[1],
-                        'records': row[2],
-                        'accounts': row[3]
+                        'earned': row[1] or 0,
+                        'spent': row[2] or 0,
+                        'net': row[3] or 0,
+                        'transactions': row[4],
+                        'accounts': row[5]
                     }
                     for row in results
                 ]
