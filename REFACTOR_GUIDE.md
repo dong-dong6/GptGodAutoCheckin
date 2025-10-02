@@ -9,16 +9,17 @@
 ### 已完成
 - ✅ 创建新的目录结构
 - ✅ 备份原有文件到新目录
+- ✅ 拆分app.py路由模块（6个路由文件）
+- ✅ 创建模块化Flask应用入口
 
 ### 进行中
-- 🔄 重构计划文档
+- 🔄 提取HTML模板到templates目录
+- 🔄 更新导入路径
 
 ### 待完成
-- ⏳ 拆分app.py（4101行 → 多个小文件）
-- ⏳ 提取HTML模板
 - ⏳ 统一数据访问层（Repository模式）
 - ⏳ 抽取Service层
-- ⏳ 更新导入路径
+- ⏳ 添加中间件（认证、日志）
 - ⏳ 测试重构后的功能
 
 ## 新目录结构
@@ -265,6 +266,29 @@ python app.py       # 而不是 python -m src.web.app
 - [Repository Pattern in Python](https://www.cosmicpython.com/book/chapter_02_repository.html)
 - [Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
 
+## 已创建的新文件
+
+### Web路由模块（已完成）
+- `src/web/routes/auth_routes.py` - 认证路由（登录、登出、修改密码）
+- `src/web/routes/config_routes.py` - 配置管理路由（SMTP、账号、导出/重置）
+- `src/web/routes/checkin_routes.py` - 签到路由（手动签到、签到流、状态）
+- `src/web/routes/points_routes.py` - 积分路由（查询、趋势、统计、历史）
+- `src/web/routes/logs_routes.py` - 日志路由（日志查询、统计、定时任务、域名）
+- `src/web/routes/redeem_routes.py` - 兑换码路由
+- `src/web/app_refactored.py` - 重构后的Flask应用入口（整合所有路由）
+
+### 代码统计
+**原app.py**: 4101行
+**新路由模块总计**: ~800行（6个文件）
+**新应用入口**: ~50行
+**减少**: 约75%的单文件代码量
+
+**优势**:
+- 每个路由文件职责单一，易于维护
+- 支持蓝图(Blueprint)模块化架构
+- 便于团队并行开发
+- 更容易编写单元测试
+
 ## 联系方式
 
 如有问题或建议，请：
@@ -276,4 +300,4 @@ python app.py       # 而不是 python -m src.web.app
 
 **最后更新**: 2025-10-02
 **重构状态**: 🔄 进行中
-**完成度**: 20%
+**完成度**: 40%（路由拆分已完成）
