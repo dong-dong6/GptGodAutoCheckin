@@ -196,8 +196,8 @@ CREATE TABLE account_mapping (
 - `get_account_history(email, uid, days, source_filter)`: 获取账号历史
 - `get_statistics(email, uid)`: 获取统计信息
 - `get_daily_summary(email, uid, days)`: 获取每日汇总
-- `export_to_json(filename)`: 导出为JSON
 - `record_exists(record_id)`: 检查记录是否存在
+- `cleanup_old_records(days_to_keep)`: 清理旧记录
 
 ## 数据备份
 
@@ -215,15 +215,6 @@ curl http://localhost:8739/api/config/export > backup.json
 
 ```bash
 cp accounts_data/gptgod_checkin.db accounts_data/backup_$(date +%Y%m%d).db
-```
-
-### 导出积分历史
-
-```python
-from points_history_manager import PointsHistoryManager
-
-manager = PointsHistoryManager()
-manager.export_to_json('points_backup.json')
 ```
 
 ## 数据库维护

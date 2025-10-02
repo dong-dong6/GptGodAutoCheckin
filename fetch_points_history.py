@@ -455,10 +455,6 @@ def fetch_all_accounts_history():
 
     logging.info(f"所有账号处理完成，共获取 {total_new_records} 条新记录")
 
-    # 导出汇总数据
-    export_file = manager.export_to_json('points_history_export.json')
-    logging.info(f"数据已导出到: {export_file}")
-
     # 显示总体统计
     overall_stats = manager.get_statistics()
     logging.info("=" * 50)

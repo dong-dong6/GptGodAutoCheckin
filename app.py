@@ -3364,17 +3364,6 @@ def api_points_trend():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
-@app.route('/api/points/export')
-@require_auth
-def api_points_export():
-    """导出积分数据"""
-    try:
-        export_type = request.args.get('type', 'summary')
-        # 功能已移除
-        return jsonify({'success': False, 'message': '导出功能暂不可用'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)})
-
 @app.route('/api/points/history/stats')
 @require_auth
 def api_points_history_stats():

@@ -365,34 +365,6 @@ class PointsHistoryManager:
                     for row in results
                 ]
 
-    def export_to_json(self, output_file='points_history_export.json'):
-        """导出所有积分历史到JSON文件"""
-        results = self.db.execute('''
-            SELECT id, uid, email, tokens, source, remark, ip, create_time, api_id
-            FROM points_history
-            ORDER BY create_time DESC
-        ''')
-
-        records = []
-        for row in results:
-            records.append({
-                'id': row[0],
-                'uid': row[1],
-                'email': row[2],
-                'tokens': row[3],
-                'source': row[4],
-                'remark': row[5],
-                'ip': row[6],
-                'create_time': row[7],
-                'api_id': row[8]
-            })
-
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(records, f, ensure_ascii=False, indent=2)
-
-        logging.info(f"已导出 {len(records)} 条记录到 {output_file}")
-        return len(records)
-
     def cleanup_old_records(self, days_to_keep=365):
         """清理旧记录
 
