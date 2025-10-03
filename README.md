@@ -38,7 +38,7 @@
 1. **克隆仓库**
 
 ```bash
-git clone https://github.com/yourusername/GptGodAutoCheckin.git
+git clone https://github.com/dong-dong6/GptGodAutoCheckin.git
 cd GptGodAutoCheckin
 ```
 
@@ -196,7 +196,7 @@ GptGodAutoCheckin/
 - `points_history`: 积分历史
 - `account_mapping`: 账号映射
 
-详细文档见 [DATABASE.md](DATABASE.md)
+详细文档见 [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)
 
 ## 📡 API文档
 
@@ -350,30 +350,52 @@ app.run(host='0.0.0.0', port=8739)  # 改为其他端口
 
 ```
 GptGodAutoCheckin/
-├── app.py                          # Web服务主程序
-├── main.py                         # 签到核心逻辑
-├── browser_manager.py              # 浏览器管理器
-├── config_manager.py               # 配置管理器
-├── checkin_logger_db.py            # 签到日志管理
-├── points_history_manager.py       # 积分历史管理
-├── fetch_points_history.py         # 积分数据同步
-├── CloudflareBypasser.py           # Cloudflare绕过
-├── unified_db_manager.py           # 数据库工具类
-├── requirements.txt                # Python依赖
-├── account.yml                     # 配置文件（可选）
-├── accounts_data/                  # 数据目录
-│   └── gptgod_checkin.db          # SQLite数据库
-├── DATABASE.md                     # 数据库文档
-└── README.md                       # 本文档
+├── main.py                    # Web服务入口
+├── cli.py                     # 命令行工具
+├── app.py                     # Flask应用主体
+├── API.md                     # API接口文档
+├── DATABASE_SCHEMA.md         # 数据库结构文档
+├── src/                       # 源代码目录
+│   ├── core/                  # 核心业务逻辑
+│   │   ├── browser_service.py      # 浏览器服务基类
+│   │   ├── checkin_service.py      # 签到服务
+│   │   └── points_sync_service.py  # 积分同步服务
+│   ├── data/                  # 数据层
+│   │   ├── database.py             # 数据库初始化
+│   │   └── repositories/           # 数据仓库
+│   │       ├── base_repository.py     # 基础仓库类
+│   │       ├── checkin_repository.py  # 签到记录
+│   │       ├── points_repository.py   # 积分历史
+│   │       └── config_repository.py   # 配置管理
+│   ├── infrastructure/        # 基础设施
+│   │   ├── browser/               # 浏览器管理
+│   │   │   ├── browser_manager.py
+│   │   │   └── cloudflare_bypasser.py
+│   │   ├── notification/          # 通知服务
+│   │   │   └── email_service.py
+│   │   └── scheduler/             # 定时任务
+│   │       └── task_scheduler.py
+│   ├── web/                   # Web层
+│   │   ├── middlewares/           # 中间件
+│   │   │   ├── auth_middleware.py
+│   │   │   └── error_handler.py
+│   │   └── routes/                # API路由（集成在app.py中）
+│   └── utils/                 # 工具类
+│       └── logger.py
+├── accounts_data/             # 数据库文件目录
+│   └── gptgod_checkin.db     # SQLite数据库
+├── logs/                      # 日志文件目录
+└── web_service.log           # Web服务日志
 ```
 
 ### 添加新功能
 
-1. **修改数据库结构**：编辑 `unified_db_manager.py`
-2. **添加配置项**：在 `config_manager.py` 中添加相关方法
-3. **添加API端点**：在 `app.py` 中添加路由
-4. **更新前端**：修改 HTML 模板
-5. **更新文档**：更新 `DATABASE.md` 和 `README.md`
+1. **修改数据库结构**：编辑 `src/data/database.py`
+2. **添加配置项**：在 `src/data/repositories/config_repository.py` 中添加相关方法
+3. **添加服务层**：在 `src/core/` 中创建新的服务类
+4. **添加API端点**：在 `app.py` 中添加路由
+5. **更新前端**：修改 HTML 模板
+6. **更新文档**：更新 `DATABASE_SCHEMA.md` 和 `README.md`
 
 ### 贡献指南
 
@@ -402,8 +424,8 @@ GptGodAutoCheckin/
 ## 📮 联系方式
 
 如有问题或建议，欢迎：
-- 提交 [Issue](https://github.com/yourusername/GptGodAutoCheckin/issues)
-- 发起 [Discussion](https://github.com/yourusername/GptGodAutoCheckin/discussions)
+- 提交 [Issue](https://github.com/dong-dong6/GptGodAutoCheckin/issues)
+- 发起 [Discussion](https://github.com/dong-dong6/GptGodAutoCheckin/discussions)
 
 ---
 
