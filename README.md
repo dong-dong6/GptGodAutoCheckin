@@ -71,12 +71,12 @@ python app.py
 
 ## 📖 使用方法
 
-### Web管理界面
+### Web管理界面（推荐）
 
 启动Web服务：
 
 ```bash
-python app.py
+python main.py
 ```
 
 访问 `http://localhost:8739`，使用配置的用户名密码登录。
@@ -89,23 +89,62 @@ python app.py
 - 📋 **日志查看**：签到日志和统计信息
 - ⚙️ **系统设置**：定时任务、域名、邮件、账号管理
 
-### 命令行签到
+### 命令行工具
+
+**签到操作：**
 
 ```bash
-python main.py
+python cli.py                    # 运行签到（显示浏览器）
+python cli.py --headless         # 运行签到（无头模式）
 ```
 
-### 获取积分历史
+**积分同步：**
 
 ```bash
-python fetch_points_history.py
+python cli.py --sync             # 同步积分历史
+python cli.py --sync --max-pages 5  # 限制每个账号最多5页
 ```
 
-该脚本会：
-- 登录所有配置的账号
-- 获取完整积分历史记录
-- 自动去重，只保存新记录
-- 导出数据到 `points_history_export.json`
+**查看配置：**
+
+```bash
+python cli.py --config           # 显示当前配置
+```
+
+## 🏗️ 项目结构
+
+```
+GptGodAutoCheckin/
+├── main.py                    # Web服务入口
+├── cli.py                     # 命令行工具
+├── app.py                     # Flask应用主体
+├── src/                       # 源代码目录
+│   ├── core/                  # 核心业务逻辑
+│   │   ├── browser_service.py      # 浏览器服务基类
+│   │   ├── checkin_service.py      # 签到服务
+│   │   ├── points_sync_service.py  # 积分同步服务
+│   │   └── redeem_service.py       # 兑换码服务
+│   ├── data/                  # 数据层
+│   │   ├── database.py             # 数据库初始化
+│   │   └── repositories/           # 数据仓库
+│   │       ├── checkin_repository.py   # 签到记录
+│   │       ├── points_repository.py    # 积分历史
+│   │       └── config_repository.py    # 配置管理
+│   ├── infrastructure/        # 基础设施
+│   │   ├── browser/               # 浏览器管理
+│   │   │   ├── browser_manager.py
+│   │   │   └── cloudflare_bypasser.py
+│   │   ├── notification/          # 通知服务
+│   │   │   └── email_service.py
+│   │   └── scheduler/             # 定时任务
+│   │       └── task_scheduler.py
+│   ├── web/                   # Web层
+│   │   ├── routes/                # API路由
+│   │   └── middlewares/           # 中间件
+│   └── utils/                 # 工具类
+├── accounts_data/             # 数据库文件目录
+└── logs/                      # 日志文件目录
+```
 
 ## 🎨 Web界面预览
 
@@ -129,33 +168,21 @@ python fetch_points_history.py
 ### 系统设置
 - ⏰ 定时签到：多时间点配置
 - 🌐 域名设置：主备域名切换
-- 📧 SMTP邮件：通知配置
+- 📧 SMTP邮件：按账号配置通知
 - 👥 账号管理：添加/删除账号
 - 🔧 配置管理：导出/导入/重置
 
 ## 🔧 技术架构
 
-### 核心模块
-
-| 模块 | 文件 | 功能 |
-|------|------|------|
-| Web服务 | `app.py` | Flask Web界面和API |
-| 签到核心 | `main.py` | 签到逻辑和调度 |
-| 浏览器管理 | `browser_manager.py` | 浏览器自动化统一管理 |
-| 配置管理 | `config_manager.py` | 配置读写和迁移 |
-| 签到日志 | `checkin_logger_db.py` | 签到记录和统计 |
-| 积分历史 | `points_history_manager.py` | 积分数据管理 |
-| 积分获取 | `fetch_points_history.py` | 历史数据同步 |
-| CF绕过 | `CloudflareBypasser.py` | Cloudflare验证处理 |
-
 ### 技术栈
 
-- **后端框架**：Flask
-- **浏览器自动化**：DrissionPage
-- **数据库**：SQLite
-- **前端**：原生HTML/CSS/JavaScript + Chart.js
-- **定时任务**：schedule
-- **邮件发送**：smtplib
+- **后端框架**: Flask
+- **浏览器自动化**: DrissionPage
+- **数据库**: SQLite
+- **前端**: 原生HTML/CSS/JavaScript + Chart.js
+- **定时任务**: schedule
+- **邮件通知**: smtplib
+- **架构模式**: 分层架构 (Service-Repository模式)
 
 ### 数据库结构
 

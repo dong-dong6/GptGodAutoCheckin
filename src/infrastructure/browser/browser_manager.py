@@ -101,7 +101,6 @@ class BrowserManager:
         args = [
             f"--user-data-dir={self.temp_dir}",
             f"--remote-debugging-port={self.random_port}",
-            "--disable-blink-features=AutomationControlled",
             "--window-size=1920,1080",
             "--disable-gpu",
             "--disable-dev-shm-usage",
@@ -116,7 +115,7 @@ class BrowserManager:
             args.append("--incognito")
 
         if self.headless:
-            args.append("--headless")
+            args.append("--headless=new")  # 使用新的无头模式
 
         return args
 

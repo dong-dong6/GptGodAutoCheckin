@@ -172,8 +172,14 @@ claude/
 *.db
 accounts_data/*.db
 
+# Log files
+*.log
+logs/
+web_service.log
+
 # Sensitive data files - DO NOT COMMIT
 points_history_export.json
 accounts_data/*.json
 accounts_data/latest_snapshot.json
 accounts_data/points_history.json
+account.yml

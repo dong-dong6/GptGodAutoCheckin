@@ -11,12 +11,11 @@ from functools import wraps
 from flask import Flask, request, jsonify, render_template_string, session, redirect, url_for, make_response, Response
 import schedule
 import yaml
-from CloudflareBypasser import CloudflareBypasser
-from DrissionPage import ChromiumPage, ChromiumOptions
-from main import send_email_notification, load_config
-from checkin_logger_db import CheckinLoggerDB
-from points_history_manager import PointsHistoryManager
-from config_manager import ConfigManager
+
+# 导入新的重构模块
+from src.data.repositories.checkin_repository import CheckinLoggerDB
+from src.data.repositories.points_repository import PointsHistoryManager
+from src.data.repositories.config_repository import ConfigManager
 
 # 配置日志
 logging.basicConfig(
@@ -66,6 +65,34 @@ def load_auth_config():
         AUTH_CONFIG['username'] = 'admin'
         AUTH_CONFIG['password_hash'] = hashlib.md5('admin123'.encode()).hexdigest()
         AUTH_CONFIG['api_token'] = secrets.token_urlsafe(32)
+
+# 模块导入时自动加载认证配置
+load_auth_config()
+
+# 模块导入时自动加载定时任务配置
+def _init_schedule():
+    """初始化定时任务"""
+    try:
+        config_manager = ConfigManager()
+        schedule_config = config_manager.get_schedule_config()
+
+        if schedule_config.get('enabled', False):
+            times = schedule_config.get('times', [])
+            task_status['schedule_times'] = times
+
+            for time_str in times:
+                schedule.every().day.at(time_str).do(lambda: perform_checkin('scheduled', 'system'))
+                logging.info(f"已设置定时任务: {time_str}")
+        else:
+            logging.info("定时任务未启用")
+    except Exception as e:
+        logging.warning(f"初始化定时任务失败: {e}")
+
+_init_schedule()
+
+# 启动定时任务线程
+schedule_thread = threading.Thread(target=lambda: [time.sleep(60) or schedule.run_pending() for _ in iter(int, 1)], daemon=True)
+schedule_thread.start()
 
 def require_auth(f):
     """认证装饰器"""
@@ -2636,14 +2663,14 @@ def load_config():
 
 def perform_checkin(trigger_type='api', trigger_by=None):
     """执行签到任务"""
-    from main import main as checkin_main
+    from cli import run_checkin
     try:
-        logging.info("开始执行定时签到任务")
-        checkin_main(trigger_type, trigger_by)
+        logging.info(f"开始执行签到任务 (触发方式: {trigger_type})")
+        result = run_checkin(headless=False, trigger_type=trigger_type, trigger_by=trigger_by)
         task_status['last_checkin'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        return True
+        return result is not None and result.get('success', 0) > 0
     except Exception as e:
-        logging.error(f"签到任务失败: {e}")
+        logging.error(f"签到任务失败: {e}", exc_info=True)
         return False
 
 def redeem_code(code, account_email, driver, domain='gptgod.online'):
@@ -3011,13 +3038,15 @@ def api_checkin():
 @app.route('/api/checkin-stream')
 @require_auth
 def api_checkin_stream():
-    """SSE接口：执行签到任务"""
+    """SSE接口：执行签到任务（使用新的CheckinService）"""
     # 在请求上下文中获取session数据
     trigger_by = session.get('username', 'api')
 
     def generate():
         """生成SSE事件流"""
         try:
+            from src.core.checkin_service import CheckinService
+
             logging.info(f"开始执行签到任务，触发者: {trigger_by}")
             yield f"data: {json.dumps({'type': 'info', 'message': '开始执行签到任务...'})}\n\n"
 
@@ -3033,76 +3062,38 @@ def api_checkin_stream():
 
             yield f"data: {json.dumps({'type': 'info', 'message': f'共有 {len(accounts)} 个账号需要签到'})}\n\n"
 
-            # 调用主签到函数
-            from main import main as checkin_main
+            # 使用新的CheckinService（Web界面显示浏览器）
+            service = CheckinService(headless=False)
 
-            # 在后台线程执行签到，同时发送进度
-            import threading
-            import queue
+            # 执行批量签到
+            for i, account in enumerate(accounts, 1):
+                email = account['mail']
+                yield f"data: {json.dumps({'type': 'info', 'message': f'正在处理账号 {i}/{len(accounts)}: {email}'})}\n\n"
 
-            progress_queue = queue.Queue()
-            exception_holder = {'exception': None}
-
-            def run_checkin():
                 try:
-                    # 重定向日志到队列
-                    import io
-                    import sys
+                    # 获取域名配置
+                    domain_config = config.get('domains', {})
+                    primary_domain = domain_config.get('primary', 'gptgod.online')
 
-                    class QueueHandler(logging.Handler):
-                        def emit(self, record):
-                            msg = self.format(record)
-                            progress_queue.put(('log', msg))
+                    # 执行签到
+                    result = service.perform_checkin(
+                        domain=primary_domain,
+                        email=email,
+                        password=account['password']
+                    )
 
-                    # 添加队列处理器
-                    queue_handler = QueueHandler()
-                    queue_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-                    logging.root.addHandler(queue_handler)
-
-                    try:
-                        checkin_main('api', trigger_by)
-                        progress_queue.put(('done', True))
-                    finally:
-                        logging.root.removeHandler(queue_handler)
+                    if result['success']:
+                        msg = f"{email}: {result['message']}"
+                        yield f"data: {json.dumps({'type': 'success', 'message': msg})}\n\n"
+                    else:
+                        msg = f"{email}: {result['message']}"
+                        yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
 
                 except Exception as e:
-                    exception_holder['exception'] = e
-                    progress_queue.put(('error', str(e)))
+                    yield f"data: {json.dumps({'type': 'error', 'message': f'{email}: {str(e)}'})}\n\n"
 
-            # 启动签到线程
-            checkin_thread = threading.Thread(target=run_checkin, daemon=True)
-            checkin_thread.start()
-
-            # 持续读取进度并发送
-            while checkin_thread.is_alive() or not progress_queue.empty():
-                try:
-                    msg_type, msg_content = progress_queue.get(timeout=1)
-
-                    if msg_type == 'log':
-                        # 发送日志消息
-                        yield f"data: {json.dumps({'type': 'info', 'message': msg_content})}\n\n"
-                    elif msg_type == 'done':
-                        logging.info("签到任务完成")
-                        yield f"data: {json.dumps({'type': 'success', 'message': '签到任务已完成'})}\n\n"
-                        yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': '签到完成'})}\n\n"
-                        break
-                    elif msg_type == 'error':
-                        logging.error(f"签到任务出错: {msg_content}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': f'签到出错: {msg_content}'})}\n\n"
-                        yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '签到失败'})}\n\n"
-                        break
-
-                except queue.Empty:
-                    # 发送心跳
-                    yield f"data: {json.dumps({'type': 'ping', 'message': '进行中...'})}\n\n"
-                    continue
-
-            # 等待线程结束
-            checkin_thread.join(timeout=5)
-
-            # 检查是否有异常
-            if exception_holder['exception']:
-                raise exception_holder['exception']
+            yield f"data: {json.dumps({'type': 'success', 'message': '所有账号签到完成'})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': '签到完成'})}\n\n"
 
         except Exception as e:
             logging.error(f"签到任务错误: {e}", exc_info=True)
@@ -3114,8 +3105,10 @@ def api_checkin_stream():
 @app.route('/api/redeem', methods=['POST'])
 @require_auth
 def api_redeem():
-    """兑换码接口"""
+    """兑换码接口（使用新的RedeemService）"""
     try:
+        from src.core.redeem_service import RedeemService
+
         data = request.json
         codes = data.get('codes', [])
         account_filter = data.get('account', 'all')
@@ -3129,55 +3122,30 @@ def api_redeem():
         if account_filter != 'all':
             accounts = [acc for acc in accounts if acc['mail'] == account_filter]
 
+        # 获取域名配置
+        domain_config = config.get('domains', {})
+        primary_domain = domain_config.get('primary', 'gptgod.online')
+
+        # 使用新的RedeemService
+        service = RedeemService(headless=False)
         results = []
 
         for account in accounts:
-            from browser_manager import BrowserManager
-
             email = account['mail']
             password = account['password']
 
-            # 使用浏览器管理器
-            browser_mgr = BrowserManager(headless=False)
-
-            try:
-                # 创建浏览器实例
-                driver = browser_mgr.create_browser(incognito=True)
-                driver.set.window.full()
-
-                # 获取域名配置
-                domain_config = config.get('domains', {})
-                primary_domain = domain_config.get('primary', 'gptgod.online')
-
-                # 登录
-                driver.get(f'https://{primary_domain}/#/login')
-                time.sleep(8)
-
-                # 登录流程（简化版）
-                email_input = driver.ele('xpath://input[@placeholder="请输入邮箱"]', timeout=10)
-                password_input = driver.ele('xpath://input[@type="password"]', timeout=10)
-
-                if email_input and password_input:
-                    email_input.clear()
-                    email_input.input(email)
-                    password_input.clear()
-                    password_input.input(password)
-
-                    login_button = driver.ele('xpath://button[contains(@class, "ant-btn-primary")]', timeout=5)
-                    if login_button:
-                        login_button.click()
-                        time.sleep(8)
-
-                        # 兑换每个码
-                        for code in codes:
-                            result = redeem_code(code, email, driver, primary_domain)
-                            results.append(f"{email}: {code} - {result['message']}")
-
-            except Exception as e:
-                results.append(f"{email}: 兑换失败 - {str(e)}")
-            finally:
-                # 使用浏览器管理器清理资源
-                browser_mgr.close()
+            # 为每个兑换码执行兑换
+            for code in codes:
+                try:
+                    result = service.redeem_code(
+                        domain=primary_domain,
+                        email=email,
+                        password=password,
+                        code=code
+                    )
+                    results.append(f"{email}: {code} - {result['message']}")
+                except Exception as e:
+                    results.append(f"{email}: {code} - 兑换失败: {str(e)}")
 
         task_status['last_redeem'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         task_status['redeem_results'] = results
@@ -3363,7 +3331,7 @@ def reload_schedule():
 def api_points():
     """获取积分统计信息 - 使用数据库"""
     try:
-        from points_history_manager import PointsHistoryManager
+        from src.data.repositories.points_repository import PointsHistoryManager
         history_manager = PointsHistoryManager()
 
         # 获取统计信息
@@ -3928,13 +3896,15 @@ def add_account_page():
 
 @app.route('/api/account/verify-stream')
 def verify_account_stream():
-    """SSE接口：验证并添加账号"""
+    """SSE接口：验证并添加账号（使用新的AccountVerifyService）"""
     email = request.args.get('email')
     password = request.args.get('password')
 
     def generate():
         """生成SSE事件流"""
         try:
+            from src.core.account_verify_service import AccountVerifyService
+
             # 发送开始消息
             logging.info(f"开始验证账号: {email}")
             yield f"data: {json.dumps({'type': 'info', 'message': '开始验证账号...'})}\n\n"
@@ -3960,120 +3930,51 @@ def verify_account_stream():
             logging.info(f"使用域名: {primary_domain}")
             yield f"data: {json.dumps({'type': 'info', 'message': f'使用域名: {primary_domain}'})}\n\n"
 
-            # 创建浏览器实例（无痕模式 + 临时数据目录）
-            from browser_manager import BrowserManager
-
+            # 使用新的AccountVerifyService
             logging.info("准备启动无痕浏览器...")
             yield f"data: {json.dumps({'type': 'info', 'message': '启动无痕浏览器...'})}\n\n"
 
-            # 使用浏览器管理器
-            browser_mgr = BrowserManager(headless=False)
+            service = AccountVerifyService(headless=False)
 
             try:
-                driver = browser_mgr.create_browser(incognito=True)
-
-                logging.info(f"浏览器启动成功，临时目录: {browser_mgr.temp_dir}")
-                logging.info(f"使用随机端口: {browser_mgr.random_port}")
-                yield f"data: {json.dumps({'type': 'info', 'message': '浏览器启动成功'})}\n\n"
-
-                # 访问登录页面
-                logging.info(f"访问登录页面: https://{primary_domain}/#/login")
+                # 验证账号
                 yield f"data: {json.dumps({'type': 'info', 'message': '访问登录页面...'})}\n\n"
-                driver.get(f'https://{primary_domain}/#/login')
-                time.sleep(3)
-
-                # 输入账号密码
-                logging.info("查找登录表单元素...")
                 yield f"data: {json.dumps({'type': 'info', 'message': '输入账号信息...'})}\n\n"
-                email_input = driver.ele('xpath://input[@placeholder="请输入邮箱"]', timeout=10)
-                password_input = driver.ele('xpath://input[@type="password"]', timeout=10)
-
-                if not email_input or not password_input:
-                    logging.error("无法找到登录表单")
-                    yield f"data: {json.dumps({'type': 'error', 'message': '无法找到登录表单'})}\n\n"
-                    yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '页面加载失败'})}\n\n"
-                    return
-
-                logging.info("输入账号密码...")
-                email_input.clear()
-                email_input.input(email)
-                password_input.clear()
-                password_input.input(password)
-
-                # 点击登录
-                logging.info("查找登录按钮...")
                 yield f"data: {json.dumps({'type': 'info', 'message': '尝试登录...'})}\n\n"
-                login_button = driver.ele('xpath://button[contains(@class, "ant-btn-primary")]', timeout=5)
-                if login_button:
-                    logging.info("点击登录按钮")
-                    login_button.click()
-                    time.sleep(8)
 
-                # 检查登录结果
-                logging.info("检查登录结果...")
-                yield f"data: {json.dumps({'type': 'info', 'message': '检查登录结果...'})}\n\n"
+                result = service.verify_account(
+                    domain=primary_domain,
+                    email=email,
+                    password=password
+                )
 
-                # 方法1：检查是否有错误提示消息
-                error_indicators = [
-                    'xpath://div[contains(@class, "ant-message-error")]',
-                    'xpath://div[contains(@class, "ant-notification-notice-error")]',
-                    'xpath://div[contains(text(), "密码错误")]',
-                    'xpath://div[contains(text(), "账号不存在")]',
-                    'xpath://div[contains(text(), "登录失败")]',
-                    'xpath://span[contains(text(), "密码错误")]',
-                    'xpath://span[contains(text(), "账号不存在")]'
-                ]
+                if result['valid']:
+                    # 登录成功
+                    logging.info(f"账号验证成功 - {email}")
+                    yield f"data: {json.dumps({'type': 'success', 'message': '已成功跳转离开登录页面'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'success', 'message': '账号验证成功！'})}\n\n"
 
-                for indicator in error_indicators:
-                    error_msg = driver.ele(indicator, timeout=2)
-                    if error_msg:
-                        error_text = error_msg.text if hasattr(error_msg, 'text') else '登录失败'
-                        logging.error(f"登录失败 - {email}: {error_text}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': f'登录失败：{error_text}'})}\n\n"
-                        yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '账号或密码错误'})}\n\n"
-                        return
+                    # 保存账号到数据库
+                    logging.info(f"保存账号到数据库: {email}")
+                    yield f"data: {json.dumps({'type': 'info', 'message': '保存账号信息...'})}\n\n"
+                    config_manager.add_account(email, password)
 
-                # 方法2：检查是否仍在登录页面（密码错误时通常不会跳转）
-                current_url = driver.url
-                logging.info(f"登录后当前URL: {current_url}")
-                if '#/login' in current_url or '/login' in current_url:
-                    # 仍在登录页面，登录一定失败
-                    logging.error(f"登录失败 - {email}: 仍在登录页面")
-                    yield f"data: {json.dumps({'type': 'error', 'message': '登录后仍在登录页面，账号或密码错误'})}\n\n"
+                    logging.info(f"账号添加成功: {email}")
+                    yield f"data: {json.dumps({'type': 'success', 'message': '账号已成功添加到系统'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': '账号添加成功'})}\n\n"
+                else:
+                    # 登录失败
+                    logging.error(f"账号验证失败 - {email}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': '登录失败，账号或密码错误'})}\n\n"
                     yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '账号或密码错误'})}\n\n"
-                    return
-
-                # 登录成功（已跳转到其他页面）
-                logging.info(f"登录成功 - {email}: 已跳转到 {current_url}")
-                yield f"data: {json.dumps({'type': 'success', 'message': '已成功跳转离开登录页面'})}\n\n"
-                yield f"data: {json.dumps({'type': 'success', 'message': '账号验证成功！'})}\n\n"
-
-                # 保存账号到数据库
-                logging.info(f"保存账号到数据库: {email}")
-                yield f"data: {json.dumps({'type': 'info', 'message': '保存账号信息...'})}\n\n"
-                config_manager.add_account(email, password)
-
-                logging.info(f"账号添加成功: {email}")
-                yield f"data: {json.dumps({'type': 'success', 'message': '账号已成功添加到系统'})}\n\n"
-                yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': '账号添加成功'})}\n\n"
 
             finally:
-                # 使用浏览器管理器清理资源
-                logging.info("清理浏览器资源...")
-                browser_mgr.close()
                 yield f"data: {json.dumps({'type': 'info', 'message': '资源清理完成'})}\n\n"
 
         except Exception as e:
             logging.error(f"账号验证错误 - {email}: {e}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': f'验证过程出错: {str(e)}'})}\n\n"
             yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '验证失败'})}\n\n"
-
-            # 清理资源
-            try:
-                if 'browser_mgr' in locals():
-                    browser_mgr.close()
-            except:
-                pass
 
     return Response(generate(), mimetype='text/event-stream')
 
@@ -4084,16 +3985,6 @@ def run_schedule():
         time.sleep(60)
 
 if __name__ == '__main__':
-    # 加载认证配置
-    load_auth_config()
-
-    # 加载并设置定时任务
-    reload_schedule()
-
-    # 启动定时任务线程
-    schedule_thread = threading.Thread(target=run_schedule, daemon=True)
-    schedule_thread.start()
-
     # 记录启动时间
     app.config['start_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 

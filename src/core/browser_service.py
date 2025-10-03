@@ -117,41 +117,86 @@ class BrowserService:
             self.driver.get(login_url)
             time.sleep(5)
 
-            # 检查并绕过Cloudflare
-            if not self.bypasser.is_bypassed():
-                if not self.bypass_cloudflare():
-                    logging.error("无法绕过Cloudflare验证")
-                    return False
-
             # 填写登录表单
             logging.info(f"填写登录信息: {email}")
 
-            # 查找邮箱输入框
-            email_input = self.driver.ele('@type=email', timeout=10)
+            # 多种方式尝试定位邮箱输入框
+            email_input = None
+            for selector in [
+                'xpath://input[@placeholder="请输入邮箱"]',
+                'xpath://input[@type="text" and contains(@class, "ant-input")]',
+                'xpath://input[@type="email"]',
+                '#email'
+            ]:
+                try:
+                    email_input = self.driver.ele(selector, timeout=3)
+                    if email_input:
+                        logging.info(f"找到邮箱输入框: {selector}")
+                        break
+                except:
+                    continue
+
             if not email_input:
                 logging.error("未找到邮箱输入框")
                 return False
 
-            # 查找密码输入框
-            password_input = self.driver.ele('@type=password', timeout=10)
+            # 多种方式尝试定位密码输入框
+            password_input = None
+            for selector in [
+                'xpath://input[@type="password"]',
+                'xpath://input[contains(@placeholder, "密码")]',
+                '#password'
+            ]:
+                try:
+                    password_input = self.driver.ele(selector, timeout=3)
+                    if password_input:
+                        logging.info(f"找到密码输入框: {selector}")
+                        break
+                except:
+                    continue
+
             if not password_input:
                 logging.error("未找到密码输入框")
                 return False
 
             # 输入凭证
+            logging.info("清空并输入邮箱...")
+            email_input.clear()
             email_input.input(email)
             time.sleep(0.5)
+
+            logging.info("清空并输入密码...")
+            password_input.clear()
             password_input.input(password)
             time.sleep(0.5)
 
-            # 查找并点击登录按钮
-            login_button = self.driver.ele('xpath://button[@type="submit"]', timeout=10)
+            # 查找并点击登录按钮 - 多种选择器尝试
+            login_button = None
+            login_selectors = [
+                'xpath://button[contains(@class, "ant-btn-primary")]',
+                'xpath://button[contains(., "登录")]',
+                'xpath://button[contains(., "Login")]',
+                'xpath://button[@type="submit"]'
+            ]
+
+            for selector in login_selectors:
+                try:
+                    login_button = self.driver.ele(selector, timeout=3)
+                    if login_button and not login_button.attr('disabled'):
+                        logging.info(f"找到登录按钮: {selector}")
+                        break
+                except:
+                    continue
+
+            # 如果还是没找到，遍历所有按钮
             if not login_button:
-                # 尝试查找包含"登录"文本的按钮
+                logging.info("尝试遍历所有按钮查找登录按钮")
                 buttons = self.driver.eles('tag:button')
                 for btn in buttons:
-                    if '登录' in btn.text or 'Login' in btn.text:
+                    btn_text = btn.text
+                    if ('登录' in btn_text or 'Login' in btn_text.lower()) and not btn.attr('disabled'):
                         login_button = btn
+                        logging.info(f"通过文本找到登录按钮: {btn_text}")
                         break
 
             if not login_button:
@@ -159,17 +204,17 @@ class BrowserService:
                 return False
 
             login_button.click()
-            logging.info("已点击登录按钮，等待登录...")
-            time.sleep(5)
+            logging.info("登录按钮点击成功")
+            time.sleep(8)  # 等待登录完成和页面跳转
 
-            # 验证是否登录成功（检查URL变化或特定元素）
+            # 验证是否登录成功（检查URL变化）
             current_url = self.driver.url
-            if '#/login' not in current_url:
-                logging.info(f"✅ 账号 {email} 登录成功")
-                return True
-            else:
-                logging.warning(f"⚠️ 账号 {email} 可能登录失败（仍在登录页面）")
+            if 'login' in current_url.lower():
+                logging.error(f"登录失败，仍在登录页面: {current_url}")
                 return False
+
+            logging.info(f"✅ 账号 {email} 登录成功")
+            return True
 
         except Exception as e:
             logging.error(f"登录过程出错: {e}", exc_info=True)

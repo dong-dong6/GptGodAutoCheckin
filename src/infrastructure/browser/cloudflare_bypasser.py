@@ -93,8 +93,10 @@ class CloudflareBypasser:
 
         if self.is_bypassed():
             self.log_message("Bypass successful.")
+            return True
         else:
             self.log_message("Bypass failed.")
+            return False
 
     def bypassgai(self):
         self.click_verification_button()

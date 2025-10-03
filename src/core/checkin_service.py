@@ -8,6 +8,7 @@ from datetime import datetime
 from src.core.browser_service import BrowserService
 from src.data.repositories.checkin_repository import CheckinLoggerDB
 from src.data.repositories.config_repository import ConfigManager
+from src.infrastructure.notification.email_service import EmailService
 
 
 class CheckinService(BrowserService):
@@ -26,6 +27,10 @@ class CheckinService(BrowserService):
         super().__init__(headless=headless)
         self.logger_db = CheckinLoggerDB()
         self.config_manager = ConfigManager()
+
+        # 初始化邮件服务
+        smtp_config = self.config_manager.get_smtp_config()
+        self.email_service = EmailService(smtp_config)
 
     def perform_checkin(self, domain, email, password, session_id=None):
         """
@@ -72,7 +77,8 @@ class CheckinService(BrowserService):
                 checkin_url = f'https://{domain}/#/token'
                 logging.info(f"导航到签到页面: {checkin_url}")
                 driver.get(checkin_url)
-                time.sleep(8)
+                logging.info("等待签到页面完全加载...")
+                time.sleep(10)
 
                 # 检查是否已签到
                 already_checked_btn = driver.ele('xpath://button[contains(., "今天已签到")]')
@@ -121,9 +127,23 @@ class CheckinService(BrowserService):
 
                     return result
 
-                # 点击签到按钮
+                # 点击签到按钮（点击后会触发CF验证）
                 logging.info(f"点击签到按钮: {email}")
                 checkin_button.click()
+                time.sleep(5)  # 增加等待时间
+
+                # 点击签到后检查并绕过Cloudflare验证
+                if not self.bypasser.is_bypassed():
+                    logging.info("点击签到后检测到Cloudflare验证，尝试绕过...")
+                    if not self.bypass_cloudflare():
+                        result['message'] = 'Cloudflare验证失败'
+                        if session_id:
+                            self.logger_db.log_account_result(
+                                session_id, email, 'cf_failed', 'Cloudflare验证失败', 0, domain
+                            )
+                        return result
+                    logging.info("✅ Cloudflare验证已通过")
+
                 time.sleep(3)
 
                 # 签到成功
@@ -233,6 +253,7 @@ class CheckinService(BrowserService):
         for account in accounts:
             email = account['mail']
             password = account['password']
+            send_email = account.get('send_email_notification', False)  # 获取账号级别的邮件通知配置
 
             # 尝试每个域名
             account_success = False
@@ -242,6 +263,7 @@ class CheckinService(BrowserService):
                 logging.info(f"{'='*60}")
 
                 result = self.perform_checkin(domain, email, password, session_id)
+                result['send_email_notification'] = send_email  # 添加邮件通知标记
                 results.append(result)
 
                 if result['success']:
@@ -257,6 +279,27 @@ class CheckinService(BrowserService):
 
         # 结束会话
         self.logger_db.end_session(session_id)
+
+        # 发送邮件通知（只包含配置了发送邮件的账号）
+        try:
+            # 筛选需要发送邮件的账号结果
+            email_results = [r for r in results if r.get('send_email_notification', False)]
+
+            if email_results:
+                # 统计需要发送邮件的账号的成功/失败数
+                email_success = sum(1 for r in email_results if r['success'])
+                email_failed = len(email_results) - email_success
+
+                self.email_service.send_checkin_notification(
+                    results={'results': email_results},
+                    success_count=email_success,
+                    failed_count=email_failed
+                )
+                logging.info(f"邮件通知已发送 (包含{len(email_results)}个账号的结果)")
+            else:
+                logging.info("没有账号配置发送邮件通知，跳过")
+        except Exception as e:
+            logging.warning(f"发送邮件通知失败: {e}")
 
         return {
             'total': len(accounts),
