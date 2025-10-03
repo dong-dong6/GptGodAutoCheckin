@@ -277,10 +277,8 @@ class CheckinService(BrowserService):
             # 账号间等待，避免被限流
             time.sleep(2)
 
-        # 结束会话
-        self.logger_db.end_session(session_id)
-
         # 发送邮件通知（只包含配置了发送邮件的账号）
+        email_sent = False
         try:
             # 筛选需要发送邮件的账号结果
             email_results = [r for r in results if r.get('send_email_notification', False)]
@@ -290,16 +288,22 @@ class CheckinService(BrowserService):
                 email_success = sum(1 for r in email_results if r['success'])
                 email_failed = len(email_results) - email_success
 
-                self.email_service.send_checkin_notification(
+                email_sent = self.email_service.send_checkin_notification(
                     results={'results': email_results},
                     success_count=email_success,
                     failed_count=email_failed
                 )
-                logging.info(f"邮件通知已发送 (包含{len(email_results)}个账号的结果)")
+                if email_sent:
+                    logging.info(f"邮件通知已发送 (包含{len(email_results)}个账号的结果)")
+                else:
+                    logging.warning("邮件通知发送失败")
             else:
                 logging.info("没有账号配置发送邮件通知，跳过")
         except Exception as e:
             logging.warning(f"发送邮件通知失败: {e}")
+
+        # 结束会话
+        self.logger_db.log_checkin_end(session_id, email_sent=email_sent)
 
         return {
             'total': len(accounts),
