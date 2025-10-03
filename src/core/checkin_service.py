@@ -279,28 +279,40 @@ class CheckinService(BrowserService):
 
         # 发送邮件通知（只包含配置了发送邮件的账号）
         email_sent = False
+        logging.info("=== 开始检查邮件发送逻辑 ===")
+        logging.info(f"总共有 {len(results)} 个账号签到结果")
+
+        # 调试：打印所有账号的邮件通知配置
+        for i, result in enumerate(results):
+            send_email = result.get('send_email_notification', False)
+            logging.info(f"账号 {i+1}: {result['email']}, 邮件通知: {send_email}")
+
         try:
             # 筛选需要发送邮件的账号结果
             email_results = [r for r in results if r.get('send_email_notification', False)]
+            logging.info(f"筛选出 {len(email_results)} 个需要发送邮件的账号")
 
             if email_results:
                 # 统计需要发送邮件的账号的成功/失败数
                 email_success = sum(1 for r in email_results if r['success'])
                 email_failed = len(email_results) - email_success
 
+                logging.info(f"准备发送邮件: 成功{email_success}个, 失败{email_failed}个")
                 email_sent = self.email_service.send_checkin_notification(
                     results={'results': email_results},
                     success_count=email_success,
                     failed_count=email_failed
                 )
                 if email_sent:
-                    logging.info(f"邮件通知已发送 (包含{len(email_results)}个账号的结果)")
+                    logging.info(f"✅ 邮件通知已发送 (包含{len(email_results)}个账号的结果)")
                 else:
-                    logging.warning("邮件通知发送失败")
+                    logging.warning("❌ 邮件通知发送失败")
             else:
-                logging.info("没有账号配置发送邮件通知，跳过")
+                logging.info("⚠️ 没有账号配置发送邮件通知，跳过")
         except Exception as e:
-            logging.warning(f"发送邮件通知失败: {e}")
+            logging.error(f"❌ 发送邮件通知异常: {e}", exc_info=True)
+
+        logging.info("=== 邮件发送逻辑结束 ===")
 
         # 结束会话
         self.logger_db.log_checkin_end(session_id, email_sent=email_sent)
