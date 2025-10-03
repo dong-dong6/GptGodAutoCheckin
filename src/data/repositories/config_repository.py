@@ -4,7 +4,7 @@ from pathlib import Path
 import logging
 import yaml
 import os
-from unified_db_manager import get_db
+from ..database import get_db
 
 
 class ConfigManager:

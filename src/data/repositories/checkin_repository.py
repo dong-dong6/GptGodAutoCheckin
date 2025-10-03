@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 import logging
-from unified_db_manager import get_db
+from ..database import get_db
 
 
 class CheckinLoggerDB:

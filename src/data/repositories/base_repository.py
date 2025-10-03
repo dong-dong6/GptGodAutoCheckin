@@ -5,7 +5,7 @@ Repository基类
 import logging
 from typing import Optional, List, Dict, Any, TypeVar, Generic
 from abc import ABC, abstractmethod
-from unified_db_manager import get_db
+from ..database import get_db
 
 
 T = TypeVar('T')

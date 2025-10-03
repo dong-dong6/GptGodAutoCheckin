@@ -3,7 +3,7 @@ import logging
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from unified_db_manager import get_db
+from ..database import get_db
 
 
 class PointsHistoryManager:
