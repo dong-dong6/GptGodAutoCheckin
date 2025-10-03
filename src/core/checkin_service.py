@@ -29,8 +29,8 @@ class CheckinService(BrowserService):
         self.config_manager = ConfigManager()
 
         # 初始化邮件服务
-        smtp_config = self.config_manager.get_smtp_config()
-        self.email_service = EmailService(smtp_config)
+        self.smtp_config = self.config_manager.get_smtp_config()
+        self.email_service = EmailService(self.smtp_config)
 
     def perform_checkin(self, domain, email, password, session_id=None):
         """
@@ -213,12 +213,14 @@ class CheckinService(BrowserService):
 
         return 0
 
-    def batch_checkin(self, domains=None):
+    def batch_checkin(self, domains=None, trigger_type='manual', trigger_by=None):
         """
         批量签到所有账号
 
         Args:
             domains: 域名列表（可选，默认从配置读取）
+            trigger_type: 触发类型（manual/scheduled/api）
+            trigger_by: 触发者
 
         Returns:
             dict: 批量签到结果统计
@@ -243,7 +245,7 @@ class CheckinService(BrowserService):
             }
 
         # 创建签到会话
-        session_id = self.logger_db.create_session(len(accounts))
+        session_id = self.logger_db.log_checkin_start(trigger_type=trigger_type, trigger_by=trigger_by)
 
         results = []
         success_count = 0
@@ -277,7 +279,7 @@ class CheckinService(BrowserService):
             # 账号间等待，避免被限流
             time.sleep(2)
 
-        # 发送邮件通知（只包含配置了发送邮件的账号）
+        # 发送邮件通知（区分个人邮件和全局邮件）
         email_sent = False
         logging.info("=== 开始检查邮件发送逻辑 ===")
         logging.info(f"总共有 {len(results)} 个账号签到结果")
@@ -288,27 +290,57 @@ class CheckinService(BrowserService):
             logging.info(f"账号 {i+1}: {result['email']}, 邮件通知: {send_email}")
 
         try:
-            # 筛选需要发送邮件的账号结果
-            email_results = [r for r in results if r.get('send_email_notification', False)]
-            logging.info(f"筛选出 {len(email_results)} 个需要发送邮件的账号")
+            # 1. 发送个人邮件通知（给配置了邮件通知的账号本人）
+            personal_email_results = [r for r in results if r.get('send_email_notification', False)]
+            logging.info(f"筛选出 {len(personal_email_results)} 个需要发送个人邮件的账号")
 
-            if email_results:
-                # 统计需要发送邮件的账号的成功/失败数
-                email_success = sum(1 for r in email_results if r['success'])
-                email_failed = len(email_results) - email_success
+            personal_sent_count = 0
+            personal_failed_count = 0
 
-                logging.info(f"准备发送邮件: 成功{email_success}个, 失败{email_failed}个")
-                email_sent = self.email_service.send_checkin_notification(
-                    results={'results': email_results},
-                    success_count=email_success,
-                    failed_count=email_failed
+            for account_result in personal_email_results:
+                try:
+                    # 添加时间戳到结果中
+                    account_result['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+                    success = self.email_service.send_personal_checkin_notification(account_result)
+                    if success:
+                        personal_sent_count += 1
+                        logging.info(f"✅ 个人邮件发送成功: {account_result['email']}")
+                    else:
+                        personal_failed_count += 1
+                        logging.warning(f"❌ 个人邮件发送失败: {account_result['email']}")
+                except Exception as e:
+                    personal_failed_count += 1
+                    logging.error(f"❌ 发送个人邮件异常 {account_result['email']}: {e}")
+
+            # 2. 发送全局邮件通知（给全局配置的收件人，包含所有账号结果）
+            # 检查是否有全局收件人配置
+            global_receivers = self.smtp_config.get('receiver_emails', [])
+            if global_receivers:
+                # 统计所有账号的成功/失败数
+                total_success = sum(1 for r in results if r['success'])
+                total_failed = len(results) - total_success
+
+                logging.info(f"准备发送全局邮件: 总成功{total_success}个, 总失败{total_failed}个")
+                global_sent = self.email_service.send_checkin_notification(
+                    results={'results': results},
+                    success_count=total_success,
+                    failed_count=total_failed
                 )
-                if email_sent:
-                    logging.info(f"✅ 邮件通知已发送 (包含{len(email_results)}个账号的结果)")
+                if global_sent:
+                    logging.info(f"✅ 全局邮件发送成功 (包含所有{len(results)}个账号的结果)")
+                    email_sent = True
                 else:
-                    logging.warning("❌ 邮件通知发送失败")
+                    logging.warning("❌ 全局邮件发送失败")
             else:
-                logging.info("⚠️ 没有账号配置发送邮件通知，跳过")
+                logging.info("⚠️ 没有配置全局收件人，跳过全局邮件发送")
+                email_sent = personal_sent_count > 0  # 如果个人邮件发送成功，也认为邮件发送成功
+
+            # 统计邮件发送结果
+            logging.info(f"邮件发送统计:")
+            logging.info(f"  个人邮件: 成功{personal_sent_count}个, 失败{personal_failed_count}个")
+            logging.info(f"  全局邮件: {'已发送' if global_receivers else '未配置'}")
+
         except Exception as e:
             logging.error(f"❌ 发送邮件通知异常: {e}", exc_info=True)
 

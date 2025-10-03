@@ -3046,6 +3046,11 @@ def api_checkin_stream():
         """生成SSE事件流"""
         try:
             from src.core.checkin_service import CheckinService
+            import threading
+            import time
+
+            # 发送初始连接确认
+            yield f"data: {json.dumps({'type': 'connected', 'message': 'SSE连接已建立'})}\n\n"
 
             logging.info(f"开始执行签到任务，触发者: {trigger_by}")
             yield f"data: {json.dumps({'type': 'info', 'message': '开始执行签到任务...'})}\n\n"
@@ -3065,32 +3070,34 @@ def api_checkin_stream():
             # 使用新的CheckinService（Web界面显示浏览器）
             service = CheckinService(headless=False)
 
-            # 执行批量签到
-            for i, account in enumerate(accounts, 1):
-                email = account['mail']
-                yield f"data: {json.dumps({'type': 'info', 'message': f'正在处理账号 {i}/{len(accounts)}: {email}'})}\n\n"
+            # 获取域名配置
+            domain_config = config.get('domains', {})
+            domains = [domain_config.get('primary', 'gptgod.online')]
+            if domain_config.get('backup'):
+                domains.append(domain_config.get('backup'))
 
-                try:
-                    # 获取域名配置
-                    domain_config = config.get('domains', {})
-                    primary_domain = domain_config.get('primary', 'gptgod.online')
+            # 执行批量签到（包含邮件发送逻辑）
+            yield f"data: {json.dumps({'type': 'info', 'message': f'使用域名: {', '.join(domains)}'})}\n\n"
 
-                    # 执行签到
-                    result = service.perform_checkin(
-                        domain=primary_domain,
-                        email=email,
-                        password=account['password']
-                    )
+            result = service.batch_checkin(domains=domains, trigger_type='manual', trigger_by=trigger_by)
 
-                    if result['success']:
-                        msg = f"{email}: {result['message']}"
-                        yield f"data: {json.dumps({'type': 'success', 'message': msg})}\n\n"
-                    else:
-                        msg = f"{email}: {result['message']}"
-                        yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
+            # 发送签到结果
+            success_count = result["success"]
+            total_count = result["total"]
+            failed_count = result["failed"]
+            message = f'签到完成: 成功{success_count}/{total_count}，失败{failed_count}'
+            yield f"data: {json.dumps({'type': 'info', 'message': message})}\n\n"
 
-                except Exception as e:
-                    yield f"data: {json.dumps({'type': 'error', 'message': f'{email}: {str(e)}'})}\n\n"
+            # 发送每个账号的详细结果
+            for account_result in result.get('results', []):
+                email = account_result['email']
+                success = account_result['success']
+                message = account_result['message']
+
+                if success:
+                    yield f"data: {json.dumps({'type': 'success', 'message': f'{email}: {message}'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'message': f'{email}: {message}'})}\n\n"
 
             yield f"data: {json.dumps({'type': 'success', 'message': '所有账号签到完成'})}\n\n"
             yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': '签到完成'})}\n\n"
@@ -3100,7 +3107,16 @@ def api_checkin_stream():
             yield f"data: {json.dumps({'type': 'error', 'message': f'签到失败: {str(e)}'})}\n\n"
             yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '签到失败'})}\n\n"
 
-    return Response(generate(), mimetype='text/event-stream')
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Cache-Control'
+        }
+    )
 
 @app.route('/api/redeem', methods=['POST'])
 @require_auth
@@ -3905,6 +3921,9 @@ def verify_account_stream():
         try:
             from src.core.account_verify_service import AccountVerifyService
 
+            # 发送初始连接确认
+            yield f"data: {json.dumps({'type': 'connected', 'message': 'SSE连接已建立'})}\n\n"
+
             # 发送开始消息
             logging.info(f"开始验证账号: {email}")
             yield f"data: {json.dumps({'type': 'info', 'message': '开始验证账号...'})}\n\n"
@@ -3976,7 +3995,16 @@ def verify_account_stream():
             yield f"data: {json.dumps({'type': 'error', 'message': f'验证过程出错: {str(e)}'})}\n\n"
             yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '验证失败'})}\n\n"
 
-    return Response(generate(), mimetype='text/event-stream')
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Cache-Control'
+        }
+    )
 
 def run_schedule():
     """运行定时任务"""

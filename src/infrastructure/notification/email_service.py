@@ -134,7 +134,7 @@ class EmailService:
         failed_count: int
     ) -> bool:
         """
-        发送签到通知邮件
+        发送全局签到通知邮件（发送给全局配置的收件人）
 
         Args:
             results: 签到结果列表
@@ -144,7 +144,7 @@ class EmailService:
         Returns:
             bool: 是否发送成功
         """
-        subject = f"GPT-GOD自动签到结果 - 成功{success_count}，失败{failed_count}"
+        subject = f"GPT-GOD自动签到汇总 - 成功{success_count}，失败{failed_count}"
 
         # 构建HTML正文
         body = f"""
@@ -170,13 +170,13 @@ class EmailService:
             </style>
         </head>
         <body>
-            <h2>GPT-GOD自动签到结果</h2>
+            <h2>GPT-GOD自动签到汇总报告</h2>
             <div class="summary">
-                <p><strong>总计:</strong> {success_count + failed_count} 个账号</p>
-                <p class="success"><strong>成功:</strong> {success_count}</p>
-                <p class="failed"><strong>失败:</strong> {failed_count}</p>
+                <p><strong>本次签到总计:</strong> {success_count + failed_count} 个账号</p>
+                <p class="success"><strong>签到成功:</strong> {success_count} 个账号</p>
+                <p class="failed"><strong>签到失败:</strong> {failed_count} 个账号</p>
             </div>
-            <h3>详细结果:</h3>
+            <h3>各账号详细结果:</h3>
         """
 
         # 添加每个账号的结果
@@ -185,20 +185,168 @@ class EmailService:
             status_icon = '✅' if result.get('success') else '❌'
             email = result.get('email', 'Unknown')
             message = result.get('message', 'No message')
+            points_info = ""
+
+            if result.get('current_points', 0) > 0:
+                points_info = f"<p>当前积分: {result['current_points']}</p>"
 
             body += f"""
             <div class="result-item {status_class}">
                 <p>{status_icon} <strong>{email}</strong></p>
                 <p>{message}</p>
+                {points_info}
             </div>
             """
 
         body += """
+            <hr>
+            <p style="color: #666; font-size: 12px;">
+                此邮件为系统自动发送，包含所有账号的签到结果汇总。<br>
+                如需取消订阅，请联系系统管理员。
+            </p>
         </body>
         </html>
         """
 
         return self.send_email(subject, body, html=True)
+
+    def send_personal_checkin_notification(
+        self,
+        account_result: Dict[str, Any]
+    ) -> bool:
+        """
+        发送个人签到通知邮件（发送给配置了邮件通知的账号本人）
+
+        Args:
+            account_result: 单个账号的签到结果
+
+        Returns:
+            bool: 是否发送成功
+        """
+        email = account_result.get('email', '')
+        success = account_result.get('success', False)
+        message = account_result.get('message', '')
+        current_points = account_result.get('current_points', 0)
+        domain = account_result.get('domain', '')
+
+        # 构建主题和内容
+        if success:
+            subject = "✅ GPT-GOD签到成功通知"
+            status_icon = "✅"
+            status_text = "签到成功"
+            status_color = "#28a745"
+        else:
+            subject = "❌ GPT-GOD签到失败通知"
+            status_icon = "❌"
+            status_text = "签到失败"
+            status_color = "#dc3545"
+
+        # 构建HTML正文
+        body = f"""
+        <html>
+        <head>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background-color: #f8f9fa;
+                    margin: 0;
+                    padding: 20px;
+                }}
+                .container {{
+                    max-width: 600px;
+                    margin: 0 auto;
+                    background-color: white;
+                    border-radius: 10px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    overflow: hidden;
+                }}
+                .header {{
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 30px;
+                    text-align: center;
+                }}
+                .status {{
+                    font-size: 48px;
+                    margin-bottom: 10px;
+                }}
+                .content {{
+                    padding: 30px;
+                }}
+                .info-card {{
+                    background-color: #f8f9fa;
+                    border-radius: 8px;
+                    padding: 20px;
+                    margin: 15px 0;
+                }}
+                .info-item {{
+                    display: flex;
+                    justify-content: space-between;
+                    margin: 10px 0;
+                    padding: 8px 0;
+                    border-bottom: 1px solid #e9ecef;
+                }}
+                .info-label {{
+                    font-weight: bold;
+                    color: #495057;
+                }}
+                .info-value {{
+                    color: {status_color};
+                    font-weight: bold;
+                }}
+                .footer {{
+                    background-color: #f8f9fa;
+                    padding: 20px;
+                    text-align: center;
+                    color: #6c757d;
+                    font-size: 12px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <div class="status">{status_icon}</div>
+                    <h1>{status_text}</h1>
+                    <p>GPT-GOD 自动签到系统通知</p>
+                </div>
+
+                <div class="content">
+                    <div class="info-card">
+                        <div class="info-item">
+                            <span class="info-label">账号邮箱:</span>
+                            <span class="info-value">{email}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">签到状态:</span>
+                            <span class="info-value">{status_text}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">签到域名:</span>
+                            <span class="info-value">{domain}</span>
+                        </div>
+                        {f'<div class="info-item"><span class="info-label">当前积分:</span><span class="info-value">{current_points}</span></div>' if current_points > 0 else ''}
+                        <div class="info-item">
+                            <span class="info-label">详细信息:</span>
+                            <span class="info-value">{message}</span>
+                        </div>
+                    </div>
+
+                    {f'<div style="color: {status_color}; text-align: center; font-size: 16px; margin: 20px 0;"><strong>🎉 恭喜您今日签到成功！</strong></div>' if success else '<div style="color: {status_color}; text-align: center; font-size: 16px; margin: 20px 0;"><strong>❌ 签到失败，请检查账号状态</strong></div>'}
+                </div>
+
+                <div class="footer">
+                    <p>此邮件为系统自动发送，仅包含您个人账号的签到结果</p>
+                    <p>如需取消此通知，请联系系统管理员或在设置中关闭</p>
+                    <p>发送时间: {account_result.get('timestamp', '')}</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        # 发送给账号本人
+        return self.send_email(subject, body, html=True, to_emails=[email])
 
     def send_error_notification(self, error_message: str, context: str = "") -> bool:
         """
