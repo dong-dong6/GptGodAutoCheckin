@@ -6,6 +6,8 @@ import smtplib
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.header import Header
+from email.utils import formataddr
 from typing import List, Optional, Dict, Any
 
 
@@ -23,6 +25,7 @@ class EmailService:
                     'server': str,
                     'port': int,
                     'sender_email': str,
+                    'sender_name': str,
                     'sender_password': str,
                     'receiver_emails': List[str] or str
                 }
@@ -57,8 +60,10 @@ class EmailService:
             # 获取配置
             smtp_server = self.smtp_config.get('server', 'smtp.gmail.com')
             smtp_port = self.smtp_config.get('port', 587)
-            sender_email = self.smtp_config.get('sender_email', '')
-            sender_password = self.smtp_config.get('sender_password', '')
+            auth_email = self.smtp_config.get('sender_email', '')  # 认证邮箱
+            auth_password = self.smtp_config.get('sender_password', '')
+            from_email = self.smtp_config.get('from_email', '') or auth_email  # 代发邮箱，默认使用认证邮箱
+            sender_name = self.smtp_config.get('sender_name', '')  # 显示名称
 
             # 确定收件人
             if to_emails is None:
@@ -67,17 +72,27 @@ class EmailService:
                 receiver_emails = to_emails
 
             # 验证配置
-            if not sender_email or not sender_password:
-                logging.warning("邮件发送者配置不完整")
+            if not auth_email or not auth_password:
+                logging.warning("SMTP认证配置不完整")
                 return False
 
             if not receiver_emails:
                 logging.warning("没有指定收件人")
                 return False
 
+            # 构建发件人显示信息
+            if sender_name:
+                # 使用发件人名称 + 代发邮箱地址
+                from_addr = formataddr((sender_name, from_email))
+            else:
+                # 只使用代发邮箱地址
+                from_addr = from_email
+
+            logging.info(f"邮件发送: 认证邮箱={auth_email}, 发件邮箱={from_email}, 发件人名称={sender_name or '(无)'}")
+
             # 创建邮件
             msg = MIMEMultipart()
-            msg['From'] = sender_email
+            msg['From'] = from_addr
             msg['To'] = ', '.join(receiver_emails) if isinstance(receiver_emails, list) else receiver_emails
             msg['Subject'] = subject
 
@@ -89,14 +104,14 @@ class EmailService:
             if smtp_port == 465:
                 # SSL端口
                 with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
-                    server.login(sender_email, sender_password)
-                    self._send_to_recipients(server, msg, sender_email, receiver_emails)
+                    server.login(auth_email, auth_password)  # 使用认证邮箱登录
+                    self._send_to_recipients(server, msg, from_email, receiver_emails)  # 使用代发邮箱作为发件人
             else:
                 # TLS端口
                 with smtplib.SMTP(smtp_server, smtp_port) as server:
                     server.starttls()
-                    server.login(sender_email, sender_password)
-                    self._send_to_recipients(server, msg, sender_email, receiver_emails)
+                    server.login(auth_email, auth_password)  # 使用认证邮箱登录
+                    self._send_to_recipients(server, msg, from_email, receiver_emails)  # 使用代发邮箱作为发件人
 
             logging.info(f"邮件发送成功: {subject}")
             return True
@@ -405,6 +420,7 @@ if __name__ == '__main__':
         'server': 'mail.example.com',
         'port': 465,
         'sender_email': 'sender@example.com',
+        'sender_name': 'GPT-GOD 签到系统',
         'sender_password': 'password',
         'receiver_emails': ['receiver@example.com']
     }

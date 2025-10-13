@@ -213,7 +213,7 @@ class CheckinService(BrowserService):
 
         return 0
 
-    def batch_checkin(self, domains=None, trigger_type='manual', trigger_by=None):
+    def batch_checkin(self, domains=None, trigger_type='manual', trigger_by=None, log_callback=None):
         """
         批量签到所有账号
 
@@ -221,10 +221,19 @@ class CheckinService(BrowserService):
             domains: 域名列表（可选，默认从配置读取）
             trigger_type: 触发类型（manual/scheduled/api）
             trigger_by: 触发者
+            log_callback: 日志回调函数 function(message, level)，用于实时流式输出日志 (可选)
 
         Returns:
             dict: 批量签到结果统计
         """
+        def _log(message, level='info'):
+            """内部日志函数，同时输出到logging和回调"""
+            logging.info(message)
+            if log_callback:
+                try:
+                    log_callback(message, level)
+                except:
+                    pass  # 回调失败不影响主流程
         # 获取域名配置
         if not domains:
             domain_config = self.config_manager.get_domain_config()
@@ -236,7 +245,7 @@ class CheckinService(BrowserService):
         accounts = self.config_manager.get_accounts()
 
         if not accounts:
-            logging.warning("没有配置任何账号")
+            _log("没有配置任何账号", "warning")
             return {
                 'total': 0,
                 'success': 0,
@@ -251,18 +260,20 @@ class CheckinService(BrowserService):
         success_count = 0
         failed_count = 0
 
+        _log(f"开始签到任务，共有 {len(accounts)} 个账号", "info")
+
         # 逐个签到
-        for account in accounts:
+        for idx, account in enumerate(accounts, 1):
             email = account['mail']
             password = account['password']
             send_email = account.get('send_email_notification', False)  # 获取账号级别的邮件通知配置
 
+            _log(f"\n[{idx}/{len(accounts)}] 签到账号: {email}", "info")
+
             # 尝试每个域名
             account_success = False
             for domain in domains:
-                logging.info(f"\n{'='*60}")
-                logging.info(f"签到账号: {email} @ {domain}")
-                logging.info(f"{'='*60}")
+                _log(f"  → 尝试域名: {domain}", "info")
 
                 result = self.perform_checkin(domain, email, password, session_id)
                 result['send_email_notification'] = send_email  # 添加邮件通知标记
@@ -271,7 +282,10 @@ class CheckinService(BrowserService):
                 if result['success']:
                     account_success = True
                     success_count += 1
+                    _log(f"  ✅ {email} 签到成功: {result['message']}", "success")
                     break  # 成功后跳过其他域名
+                else:
+                    _log(f"  ❌ {email} 签到失败: {result['message']}", "error")
 
             if not account_success:
                 failed_count += 1
@@ -281,18 +295,17 @@ class CheckinService(BrowserService):
 
         # 发送邮件通知（区分个人邮件和全局邮件）
         email_sent = False
-        logging.info("=== 开始检查邮件发送逻辑 ===")
-        logging.info(f"总共有 {len(results)} 个账号签到结果")
+        _log("=== 开始邮件通知流程 ===", "info")
+        _log(f"签到完成，成功 {success_count} 个，失败 {failed_count} 个", "info")
 
-        # 调试：打印所有账号的邮件通知配置
-        for i, result in enumerate(results):
-            send_email = result.get('send_email_notification', False)
-            logging.info(f"账号 {i+1}: {result['email']}, 邮件通知: {send_email}")
+        # 检查需要发送个人邮件的账号
+        personal_email_count = sum(1 for r in results if r.get('send_email_notification', False))
+        if personal_email_count > 0:
+            _log(f"检测到 {personal_email_count} 个账号需要发送个人邮件通知", "info")
 
         try:
             # 1. 发送个人邮件通知（给配置了邮件通知的账号本人）
             personal_email_results = [r for r in results if r.get('send_email_notification', False)]
-            logging.info(f"筛选出 {len(personal_email_results)} 个需要发送个人邮件的账号")
 
             personal_sent_count = 0
             personal_failed_count = 0
@@ -302,16 +315,17 @@ class CheckinService(BrowserService):
                     # 添加时间戳到结果中
                     account_result['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+                    _log(f"发送个人邮件给: {account_result['email']}", "info")
                     success = self.email_service.send_personal_checkin_notification(account_result)
                     if success:
                         personal_sent_count += 1
-                        logging.info(f"✅ 个人邮件发送成功: {account_result['email']}")
+                        _log(f"✅ 个人邮件发送成功: {account_result['email']}", "success")
                     else:
                         personal_failed_count += 1
-                        logging.warning(f"❌ 个人邮件发送失败: {account_result['email']}")
+                        _log(f"❌ 个人邮件发送失败: {account_result['email']}", "error")
                 except Exception as e:
                     personal_failed_count += 1
-                    logging.error(f"❌ 发送个人邮件异常 {account_result['email']}: {e}")
+                    _log(f"❌ 发送个人邮件异常 {account_result['email']}: {str(e)}", "error")
 
             # 2. 发送全局邮件通知（给全局配置的收件人，包含所有账号结果）
             # 检查是否有全局收件人配置
@@ -321,30 +335,29 @@ class CheckinService(BrowserService):
                 total_success = sum(1 for r in results if r['success'])
                 total_failed = len(results) - total_success
 
-                logging.info(f"准备发送全局邮件: 总成功{total_success}个, 总失败{total_failed}个")
+                _log(f"发送全局邮件: 成功{total_success}个, 失败{total_failed}个", "info")
                 global_sent = self.email_service.send_checkin_notification(
                     results={'results': results},
                     success_count=total_success,
                     failed_count=total_failed
                 )
                 if global_sent:
-                    logging.info(f"✅ 全局邮件发送成功 (包含所有{len(results)}个账号的结果)")
+                    _log(f"✅ 全局邮件发送成功 (包含{len(results)}个账号)", "success")
                     email_sent = True
                 else:
-                    logging.warning("❌ 全局邮件发送失败")
+                    _log("❌ 全局邮件发送失败", "error")
             else:
-                logging.info("⚠️ 没有配置全局收件人，跳过全局邮件发送")
+                _log("未配置全局收件人，跳过全局邮件", "info")
                 email_sent = personal_sent_count > 0  # 如果个人邮件发送成功，也认为邮件发送成功
 
             # 统计邮件发送结果
-            logging.info(f"邮件发送统计:")
-            logging.info(f"  个人邮件: 成功{personal_sent_count}个, 失败{personal_failed_count}个")
-            logging.info(f"  全局邮件: {'已发送' if global_receivers else '未配置'}")
+            if personal_sent_count > 0 or global_receivers:
+                _log(f"邮件发送完成: 个人邮件 {personal_sent_count}/{len(personal_email_results)}, 全局邮件 {'已发送' if global_receivers else '未配置'}", "info")
 
         except Exception as e:
-            logging.error(f"❌ 发送邮件通知异常: {e}", exc_info=True)
+            _log(f"❌ 邮件通知异常: {str(e)}", "error")
 
-        logging.info("=== 邮件发送逻辑结束 ===")
+        _log("=== 签到任务完成 ===", "info")
 
         # 结束会话
         self.logger_db.log_checkin_end(session_id, email_sent=email_sent)

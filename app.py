@@ -1449,6 +1449,19 @@ HTML_TEMPLATE = '''
                                     <input type="password" id="sender-password" placeholder="应用专用密码">
                                 </div>
                                 <div class="form-group">
+                                    <label>发件人名称（可选）</label>
+                                    <input type="text" id="sender-name" placeholder="GPT-GOD 签到系统">
+                                    <p style="color: #6b7280; font-size: 12px; margin-top: 4px;">设置后，收件人将看到此名称而不是邮箱地址</p>
+                                </div>
+                                <div class="form-group">
+                                    <label>代发邮箱（可选）</label>
+                                    <input type="email" id="from-email" placeholder="noreply@company.com">
+                                    <p style="color: #6b7280; font-size: 12px; margin-top: 4px;">
+                                        留空则使用上方认证邮箱作为发件人。<br>
+                                        设置后，邮件将以此邮箱地址发送，但使用上面的认证邮箱登录SMTP
+                                    </p>
+                                </div>
+                                <div class="form-group">
                                     <label>收件人邮箱（每行一个）</label>
                                     <textarea id="receiver-emails" rows="3" placeholder="receiver1@example.com
 receiver2@example.com"></textarea>
@@ -2380,7 +2393,9 @@ receiver2@example.com"></textarea>
                     document.getElementById('smtp-server').value = data.config.server || 'smtp.gmail.com';
                     document.getElementById('smtp-port').value = data.config.port || 587;
                     document.getElementById('sender-email').value = data.config.sender_email || '';
+                    document.getElementById('sender-name').value = data.config.sender_name || '';
                     document.getElementById('sender-password').value = data.config.sender_password || '';
+                    document.getElementById('from-email').value = data.config.from_email || '';
                     document.getElementById('receiver-emails').value = (data.config.receiver_emails || []).join('\\n');
                 } else {
                     console.error('SMTP配置加载失败:', data.message || '未知错误');
@@ -2395,7 +2410,9 @@ receiver2@example.com"></textarea>
             const server = document.getElementById('smtp-server').value;
             const port = parseInt(document.getElementById('smtp-port').value);
             const senderEmail = document.getElementById('sender-email').value;
+            const senderName = document.getElementById('sender-name').value;
             const senderPassword = document.getElementById('sender-password').value;
+            const fromEmail = document.getElementById('from-email').value;
             const receiverEmails = document.getElementById('receiver-emails').value
                 .split('\\n').map(email => email.trim()).filter(email => email);
 
@@ -2405,7 +2422,8 @@ receiver2@example.com"></textarea>
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         enabled, server, port, sender_email: senderEmail,
-                        sender_password: senderPassword, receiver_emails: receiverEmails
+                        sender_name: senderName, sender_password: senderPassword,
+                        from_email: fromEmail, receiver_emails: receiverEmails
                     })
                 });
 
@@ -2903,7 +2921,9 @@ def api_config_smtp():
                 server=data.get('server', 'smtp.gmail.com'),
                 port=data.get('port', 587),
                 sender_email=data.get('sender_email', ''),
+                sender_name=data.get('sender_name', ''),
                 sender_password=data.get('sender_password', ''),
+                from_email=data.get('from_email', ''),
                 receiver_emails=data.get('receiver_emails', [])
             )
             return jsonify({'success': True, 'message': 'SMTP配置更新成功'})
@@ -3079,7 +3099,78 @@ def api_checkin_stream():
             # 执行批量签到（包含邮件发送逻辑）
             yield f"data: {json.dumps({'type': 'info', 'message': f'使用域名: {', '.join(domains)}'})}\n\n"
 
-            result = service.batch_checkin(domains=domains, trigger_type='manual', trigger_by=trigger_by)
+            # 使用队列实现实时日志流式输出
+            import queue
+            log_queue = queue.Queue()
+            result_container = [None]  # 用列表包装结果，以便在线程中修改
+
+            # 定义日志回调函数
+            def log_callback(message, level='info'):
+                """回调函数，将日志消息放入队列"""
+                type_mapping = {
+                    'info': 'info',
+                    'success': 'success',
+                    'error': 'error',
+                    'warning': 'warning'
+                }
+                sse_type = type_mapping.get(level, 'info')
+                log_queue.put(('log', sse_type, message))
+
+            # 在单独线程中执行签到
+            def run_checkin():
+                try:
+                    result = service.batch_checkin(
+                        domains=domains,
+                        trigger_type='manual',
+                        trigger_by=trigger_by,
+                        log_callback=log_callback
+                    )
+                    result_container[0] = result
+                    log_queue.put(('complete', result, None))
+                except Exception as e:
+                    log_queue.put(('error', str(e), None))
+
+            # 启动签到线程
+            checkin_thread = threading.Thread(target=run_checkin)
+            checkin_thread.daemon = True
+            checkin_thread.start()
+
+            # 实时从队列中读取并发送日志
+            while True:
+                try:
+                    # 等待队列中的消息（带超时，避免阻塞）
+                    item = log_queue.get(timeout=0.5)
+
+                    if item[0] == 'log':
+                        # 发送日志消息
+                        _, sse_type, message = item
+                        yield f"data: {json.dumps({'type': sse_type, 'message': message})}\n\n"
+
+                    elif item[0] == 'complete':
+                        # 签到完成
+                        _, result, _ = item
+                        break
+
+                    elif item[0] == 'error':
+                        # 发生错误
+                        _, error_msg, _ = item
+                        yield f"data: {json.dumps({'type': 'error', 'message': f'签到失败: {error_msg}'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '签到失败'})}\n\n"
+                        return
+
+                except queue.Empty:
+                    # 队列为空，继续等待
+                    # 检查线程是否还在运行
+                    if not checkin_thread.is_alive() and log_queue.empty():
+                        break
+                    continue
+
+            # 获取最终结果
+            result = result_container[0]
+            if not result:
+                yield f"data: {json.dumps({'type': 'error', 'message': '签到任务异常结束'})}\n\n"
+                yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': '签到失败'})}\n\n"
+                return
 
             # 发送签到结果
             success_count = result["success"]

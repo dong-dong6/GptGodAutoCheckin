@@ -30,6 +30,7 @@ def smtp_config():
                 server=data.get('server', ''),
                 port=data.get('port', 587),
                 sender_email=data.get('sender_email', ''),
+                sender_name=data.get('sender_name', ''),
                 sender_password=data.get('sender_password', ''),
                 receiver_emails=data.get('receiver_emails', [])
             )

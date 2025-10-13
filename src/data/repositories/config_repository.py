@@ -61,7 +61,7 @@ class ConfigManager:
     def get_smtp_config(self):
         """获取SMTP配置"""
         result = self.db.execute_one('''
-            SELECT enabled, server, port, sender_email, sender_password, receiver_emails
+            SELECT enabled, server, port, sender_email, sender_name, sender_password, receiver_emails, from_email
             FROM smtp_config WHERE id = 1
         ''')
 
@@ -70,9 +70,11 @@ class ConfigManager:
                 'enabled': bool(result[0]),
                 'server': result[1],
                 'port': result[2],
-                'sender_email': result[3],
-                'sender_password': result[4],
-                'receiver_emails': json.loads(result[5])
+                'sender_email': result[3],  # 认证邮箱
+                'sender_name': result[4] or '',  # 发件人显示名称
+                'sender_password': result[5],
+                'receiver_emails': json.loads(result[6]),
+                'from_email': result[7] or ''  # 代发邮箱（如果为空则使用sender_email）
             }
 
         # 默认配置
@@ -81,8 +83,10 @@ class ConfigManager:
             'server': 'smtp.gmail.com',
             'port': 587,
             'sender_email': '',
+            'sender_name': '',
             'sender_password': '',
-            'receiver_emails': []
+            'receiver_emails': [],
+            'from_email': ''
         }
 
     def get_web_auth_config(self):
@@ -148,13 +152,19 @@ class ConfigManager:
             VALUES (1, ?, ?, datetime('now'))
         ''', (enabled, times_json))
 
-    def update_smtp_config(self, enabled, server, port, sender_email, sender_password, receiver_emails):
-        """更新SMTP配置"""
+    def update_smtp_config(self, enabled, server, port, sender_email, sender_name, sender_password, receiver_emails, from_email=''):
+        """更新SMTP配置
+
+        Args:
+            sender_email: SMTP认证邮箱
+            sender_name: 发件人显示名称
+            from_email: 代发邮箱地址（如果不填则使用sender_email）
+        """
         emails_json = json.dumps(receiver_emails)
         self.db.execute('''
-            INSERT OR REPLACE INTO smtp_config (id, enabled, server, port, sender_email, sender_password, receiver_emails, updated_at)
-            VALUES (1, ?, ?, ?, ?, ?, ?, datetime('now'))
-        ''', (enabled, server, port, sender_email, sender_password, emails_json))
+            INSERT OR REPLACE INTO smtp_config (id, enabled, server, port, sender_email, sender_name, sender_password, receiver_emails, from_email, updated_at)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ''', (enabled, server, port, sender_email, sender_name, sender_password, emails_json, from_email))
 
     def update_web_auth_config(self, enabled, username, password, api_token=''):
         """更新Web认证配置"""

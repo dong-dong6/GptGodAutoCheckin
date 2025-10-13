@@ -166,6 +166,7 @@ class UnifiedDatabaseManager:
                     server TEXT NOT NULL,
                     port INTEGER NOT NULL DEFAULT 587,
                     sender_email TEXT NOT NULL,
+                    sender_name TEXT DEFAULT '',
                     sender_password TEXT NOT NULL,
                     receiver_emails TEXT NOT NULL,
                     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -231,7 +232,28 @@ class UnifiedDatabaseManager:
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_points_create_time ON points_history (create_time)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_points_source ON points_history (source)')
 
+            # 执行数据库迁移
+            self._migrate_database(cursor)
+
         logging.info("统一数据库所有表初始化完成")
+
+    def _migrate_database(self, cursor):
+        """执行数据库迁移"""
+        try:
+            cursor.execute("PRAGMA table_info(smtp_config)")
+            columns = [column[1] for column in cursor.fetchall()]
+
+            # 添加sender_name字段（发件人显示名称）
+            if 'sender_name' not in columns:
+                cursor.execute('ALTER TABLE smtp_config ADD COLUMN sender_name TEXT DEFAULT ""')
+                logging.info("已添加sender_name字段到smtp_config表")
+
+            # 添加from_email字段（代发邮箱地址）
+            if 'from_email' not in columns:
+                cursor.execute('ALTER TABLE smtp_config ADD COLUMN from_email TEXT DEFAULT ""')
+                logging.info("已添加from_email字段到smtp_config表")
+        except Exception as e:
+            logging.warning(f"数据库迁移失败: {e}")
 
 
 # 获取全局数据库实例
